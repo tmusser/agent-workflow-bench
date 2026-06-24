@@ -42,6 +42,9 @@ CLAUDE_MAX_TURNS=60 \
 ./tools/pilot_smoke.sh auto-a-r1
 ```
 
+For the E-arm local plugin checkout and runtime-proof flow, see
+[skill-arm-setup.md](skill-arm-setup.md).
+
 The assessment checks look for:
 
 - `outputs/trust_report.json`

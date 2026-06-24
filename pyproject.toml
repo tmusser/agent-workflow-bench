@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "benchmark-v04-pilot-harness"
-version = "0.4.2"
-description = "Harness utilities for the v0.4.2 Task 4 artifact-resume pilot."
+name = "agent-workflow-bench"
+version = "0.1.0"
+description = "A small benchmark for agent skills, verification artifacts, and fresh-session resumability."
 requires-python = ">=3.11"
 dependencies = [
   "PyYAML>=6.0",

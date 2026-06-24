@@ -1,4 +1,4 @@
-# Benchmark v0.4.2 Pilot
+# Agent Workflow Bench
 
 A small benchmark for agent skills, verification artifacts, and fresh-session resumability.
 
@@ -20,7 +20,7 @@ It is a narrower benchmark for whether workflow skills improve audit trails, ver
 - Not proof that skill packs broadly outperform baseline.
 - Not proof that workflow skills guarantee functional correctness.
 - Not proof that these tasks generalize to all coding work.
-- Not a public proof benchmark.
+- Not a proof of broad agent superiority.
 
 ## 3. Current Tasks
 
@@ -45,6 +45,7 @@ It is a narrower benchmark for whether workflow skills improve audit trails, ver
 
 - Workflow-skills arm.
 - Intended to produce stronger audit trails, verification context, and resumability artifacts.
+- E-arm setup and validation: [docs/skill-arm-setup.md](docs/skill-arm-setup.md)
 
 ## 5. Result Interpretation
 
@@ -65,6 +66,9 @@ Not proven:
 Run the benchmark tests:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
 python -m pytest benchmark_harness/tests -q
 ```
 

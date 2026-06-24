@@ -1,6 +1,6 @@
-# benchmark-v04.2-helper-v6
+# agent-workflow-bench-helper-v6
 
-Drop this into `benchmark-v04.2-pilot` after unzipping the v0.4.2 pilot package.
+Drop this into `agent-workflow-bench` after unzipping the benchmark package.
 
 This version fixes the Claude write doctor false-negative by running the write smoke test inside a git-initialized temporary repo, matching the real benchmark workspaces.
 

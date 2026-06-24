@@ -1,11 +1,13 @@
 # Version
 
-Benchmark pilot version: `v0.4.2-pilot`
+Benchmark repo name: `agent-workflow-bench`
+
+Package version: `0.1.0`
 
 Release label:
 
 ```text
-Benchmark v0.4.2 Pilot: Task 4 harness + artifact-resume mechanism test
+Agent Workflow Bench: Task 4 harness + artifact-resume mechanism test
 ```
 
 Scope exclusions:
@@ -30,4 +32,11 @@ Fixture coverage requires active-interval mapping
 Skill runtime proof strict validation rejects placeholders
 Private active-interval checks reject both first-plan-wins and last-plan-wins mistakes
 Starter repo `.gitignore` suppresses venv/cache/build noise
+```
+
+Current pilot lineage:
+
+```text
+This repository still carries the v0.4.2 pilot task design and scoring lineage, but its public
+identity is Agent Workflow Bench.
 ```

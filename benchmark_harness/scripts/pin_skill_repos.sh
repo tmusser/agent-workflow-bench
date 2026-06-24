@@ -3,7 +3,7 @@ set -euo pipefail
 
 OUT_DIR="${1:-benchmark-data/skill-repos}"
 mkdir -p "$OUT_DIR"
-AI_ENGINEERING_SKILLS_REPO_URL="${AI_ENGINEERING_SKILLS_REPO_URL:?set AI_ENGINEERING_SKILLS_REPO_URL to the ai-engineering-skills git URL}"
+AI_ENGINEERING_SKILLS_REPO_URL="${AI_ENGINEERING_SKILLS_REPO_URL:-https://github.com/tmusser/ai-engineering-skills.git}"
 
 clone_or_update() {
   local name="$1"
