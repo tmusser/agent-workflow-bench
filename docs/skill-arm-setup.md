@@ -20,7 +20,14 @@ metadata in `local_plugins/pinned_skill_repos.csv`.
 If you need to test a private fork, override the repo URL:
 
 ```bash
-AI_ENGINEERING_SKILLS_REPO_URL=https://github.com/<your-org-or-user>/ai-engineering-skills.git \
+AI_ENGINEERING_SKILLS_REPO_URL=https://github.com/<owner>/<repo>.git \
+  ./benchmark_harness/scripts/pin_skill_repos.sh local_plugins
+```
+
+If you want to use the current public skill repo directly, this also works:
+
+```bash
+AI_ENGINEERING_SKILLS_REPO_URL=https://github.com/tmusser/ai-engineering-skills.git \
   ./benchmark_harness/scripts/pin_skill_repos.sh local_plugins
 ```
 
@@ -58,7 +65,7 @@ The proof is validated with the harness validator:
 
 ```bash
 python -m benchmark_harness.validate_skill_runtime_proof \
-  benchmark-data/runs/$RUN_ID/SKILL_RUNTIME_PROOF.md
+  benchmark-data/workspaces/$RUN_ID/repo/SKILL_RUNTIME_PROOF.md
 ```
 
 That validator checks for the required markers, non-placeholder fields, and a real
