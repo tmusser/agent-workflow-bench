@@ -1,7 +1,23 @@
-.PHONY: preflight starter-failure hidden-starter-failure matrix validate-template validate-template-rejects-placeholders
+.PHONY: test preflight starter-failure hidden-starter-failure matrix validate-template validate-template-rejects-placeholders scorecard-example clean-generated
+
+test: preflight
 
 preflight:
 	python -m pytest benchmark_harness/tests -q
+
+scorecard-example:
+	@bundles="$$(find . -maxdepth 1 \( -name '*-eval-bundle.tar.gz' -o -name '*-initial-fail-bundle.tar.gz' \) | sort)"; \
+	if [ -z "$$bundles" ]; then \
+		echo "No local bundles found. Unpack benchmark bundles next to the repo and try again."; \
+		exit 1; \
+	fi; \
+	python -m benchmark_harness.scorecard $$bundles
+
+clean-generated:
+	rm -rf benchmark-data local_plugins .pytest_cache .venv agent_workflow_bench.egg-info benchmark_v04_pilot_harness.egg-info
+	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
+	find tasks -type d -path '*/starter_repo/outputs' -exec rm -rf {} +
+	find . -maxdepth 1 \( -name '*-eval-bundle.tar.gz' -o -name '*-initial-fail-bundle.tar.gz' \) -delete
 
 starter-failure:
 	cd tasks/04-impossible-churn/starter_repo && PYTHONPATH=src python -m pytest -q || true

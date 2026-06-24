@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "agent-workflow-bench"
 version = "0.1.0"
 description = "A small benchmark for agent skills, verification artifacts, and fresh-session resumability."
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
 dependencies = [
   "PyYAML>=6.0",

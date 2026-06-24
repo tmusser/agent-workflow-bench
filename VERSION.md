@@ -1,42 +1,34 @@
 # Version
 
-Benchmark repo name: `agent-workflow-bench`
+Repository: `agent-workflow-bench`
 
 Package version: `0.1.0`
 
-Release label:
+Release identity:
 
 ```text
-Agent Workflow Bench: Task 4 harness + artifact-resume mechanism test
+Agent Workflow Bench v0.1.0
 ```
 
-Scope exclusions:
+Current benchmark tasks:
 
-```text
-No Task 1
-No Task 5
-No A2 no-skill + explicit handoff arm
-No Ralph Vault arms
-No public-report generator
-No fabricated benchmark results
-```
+- Task 4: Impossible Churn Regression
+- Task 5: Fake Data Campaign Lift Trust
 
-v0.4.2 blocker fixes:
+Current public arms:
 
-```text
-Metadata outside agent-visible resume repos
-Git baseline initialized in every run workspace
-Public tests/checks no longer expose hidden root-cause criteria
-Assessment checks moved outside starter repo
-Fixture coverage requires active-interval mapping
-Skill runtime proof strict validation rejects placeholders
-Private active-interval checks reject both first-plan-wins and last-plan-wins mistakes
-Starter repo `.gitignore` suppresses venv/cache/build noise
-```
+- A baseline
+- E ai-engineering-skills
 
-Current pilot lineage:
+Not included:
 
-```text
-This repository still carries the v0.4.2 pilot task design and scoring lineage, but its public
-identity is Agent Workflow Bench.
-```
+- Task 1
+- A2 no-skill + explicit handoff arm
+- Ralph Vault arms
+- public-report generator
+- fabricated benchmark results
+
+Notes:
+
+- The repo keeps a conservative claim boundary: it is not a proof of broad agent superiority.
+- PyPI publishing is deferred until the repo exposes a stable CLI and package-data story.

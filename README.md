@@ -1,5 +1,10 @@
 # Agent Workflow Bench
 
+[![CI](https://github.com/tmusser/agent-workflow-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/tmusser/agent-workflow-bench/actions/workflows/ci.yml)
+[![Python >=3.11](https://img.shields.io/badge/python-%3E%3D3.11-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Version v0.1.0](https://img.shields.io/badge/version-v0.1.0-informational)](https://github.com/tmusser/agent-workflow-bench/releases/tag/v0.1.0)
+
 A small benchmark for agent skills, verification artifacts, and fresh-session resumability.
 
 > A benchmark for the awkward middle of agentic work: not whether an agent can produce code once, but whether it leaves enough verified context for the next agent to trust and continue it.
@@ -7,6 +12,8 @@ A small benchmark for agent skills, verification artifacts, and fresh-session re
 This is not a universal coding-agent leaderboard.
 
 It is a narrower benchmark for whether workflow skills improve audit trails, verification evidence, and fresh-session resumability on tasks where generic agents may pass public checks while missing hidden contracts.
+
+For a compact summary, see [docs/overview.md](docs/overview.md).
 
 ## 1. What This Is
 
@@ -61,6 +68,17 @@ Not proven:
 - skills guarantee functional correctness.
 - these tasks generalize to all coding work.
 
+### Illustrative current-pilot scorecard rows
+
+This table reflects the current pilot, not a universal result set.
+
+| Task | Arm | Scorecard shape | Artifact mechanism | Reading |
+| --- | --- | --- | --- | --- |
+| Task 4 | A baseline | green | inactive | Functional pass without workflow-skill artifacts. |
+| Task 4 | E ai-engineering-skills | green | active | Functional pass with workflow artifacts and resume support. |
+| Task 5 | A baseline | initial_fail / hidden fail | inactive | Expected negative result from the public-pass / hidden-fail trap. |
+| Task 5 | E ai-engineering-skills | initial_fail / skill proof + artifacts / hidden fail | inactive | Skill proof and workflow artifacts are present, but the hidden trust gate still fails. |
+
 ## 6. Quickstart
 
 Run the benchmark tests:
@@ -106,3 +124,4 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 - Keep public verification and assessment checks separate.
 - Continue publishing scorecards and bundles as generated artifacts, not source.
 - Improve launch hygiene so the source tree stays easy to inspect and reuse.
+- PyPI publishing is deferred until the repo exposes a stable CLI and package-data story.
