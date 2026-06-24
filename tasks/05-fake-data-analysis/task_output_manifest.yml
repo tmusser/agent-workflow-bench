@@ -1,0 +1,21 @@
+required_outputs:
+  - outputs/trust_report.json
+  - outputs/executive_summary.md
+
+workflow_artifact_patterns:
+  - SPEC.md
+  - PLAN.md
+  - TODO.md
+  - VERIFY.md
+  - HANDOFF.md
+  - BUGS.md
+  - DATA_AUDIT.md
+  - TRUST_AUDIT.md
+  - SKILL_RUNTIME_PROOF.md
+  - docs/*audit*.md
+  - docs/*handoff*.md
+  - docs/*verify*.md
+
+strip_timing:
+  allowed_phase: before_resume_run_only
+  forbidden_after_resume_outputs: true

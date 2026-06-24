@@ -1,0 +1,16 @@
+customer_id,plan,valid_from,valid_to
+C001,enterprise,2024-01-01,2024-02-15
+C001,enterprise,2024-02-15,
+C002,enterprise,2024-01-10,
+C003,enterprise,2024-01-01,
+C004,enterprise,2024-02-01,
+C005,pro,2024-01-01,
+C006,pro,2024-01-01,2024-03-15
+C006,enterprise,2024-03-15,
+C007,enterprise,2024-01-01,2024-03-05
+C007,enterprise,2024-03-05,
+C008,pro,2024-01-01,
+C009,pro,2024-01-01,
+C010,pro,2024-01-01,2024-03-09
+C010,enterprise,2024-03-09,
+C011,enterprise,2024-01-01,

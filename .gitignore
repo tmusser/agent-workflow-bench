@@ -1,0 +1,16 @@
+benchmark-data/
+local_plugins/
+
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.egg-info/
+.DS_Store
+
+# Starter/generated task outputs
+tasks/*/starter_repo/outputs/
+
+# Generated benchmark bundles
+*-eval-bundle.tar.gz
+*-initial-fail-bundle.tar.gz

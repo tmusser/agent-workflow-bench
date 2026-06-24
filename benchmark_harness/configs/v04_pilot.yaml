@@ -1,0 +1,43 @@
+version: v0.4.2-pilot
+scope:
+  task_ids:
+    - 04-bugfix
+  arms:
+    - A
+    - B
+    - C
+    - D
+    - E
+    - F
+  repeats_per_arm: 2
+  excluded:
+    - Task 1 Bayesian model
+    - Task 5 fake-data analysis
+    - A2 no-skill explicit handoff
+    - Ralph Vault arms
+    - public-report generation
+
+task:
+  id: 04-bugfix
+  name: Impossible Churn Regression
+  starter_repo: tasks/04-impossible-churn/starter_repo
+  public_prompt: tasks/04-impossible-churn/starter_repo/TASK.md
+  hidden_contract: tasks/04-impossible-churn/evaluator_contract.md
+  hidden_evaluator: benchmark_harness/evaluators/task4_hidden_evaluator.py
+  output_manifest: tasks/04-impossible-churn/task_output_manifest.yml
+  verify_script: VERIFY.sh
+
+common_wrapper: common_wrapper.md
+run_matrix: benchmark_harness/run_matrix.csv
+fresh_session_prompt: benchmark_harness/protocols/FRESH_SESSION_PROMPT.md
+
+resume_conditions:
+  - full
+  - artifact_stripped
+
+scoring:
+  headline_scores:
+    - functional_score
+    - workflow_resume_score
+    - artifact_resume_delta
+  condition_disclosure: condition_undisclosed

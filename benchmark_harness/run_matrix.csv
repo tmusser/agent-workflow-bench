@@ -1,0 +1,13 @@
+run_id,task_id,task_name,arm_id,arm_name,arm_wrapper_path,repeat,initial_run_required,full_resume_required,artifact_stripped_resume_required
+v04pilot_04-bugfix_A_r1,04-bugfix,Impossible Churn Regression,A,No skill baseline,arms/A-baseline.md,1,true,true,true
+v04pilot_04-bugfix_A_r2,04-bugfix,Impossible Churn Regression,A,No skill baseline,arms/A-baseline.md,2,true,true,true
+v04pilot_04-bugfix_B_r1,04-bugfix,Impossible Churn Regression,B,Matt Pocock skills,arms/B-matt-pocock.md,1,true,true,true
+v04pilot_04-bugfix_B_r2,04-bugfix,Impossible Churn Regression,B,Matt Pocock skills,arms/B-matt-pocock.md,2,true,true,true
+v04pilot_04-bugfix_C_r1,04-bugfix,Impossible Churn Regression,C,Addy Osmani agent-skills,arms/C-addy-osmani.md,1,true,true,true
+v04pilot_04-bugfix_C_r2,04-bugfix,Impossible Churn Regression,C,Addy Osmani agent-skills,arms/C-addy-osmani.md,2,true,true,true
+v04pilot_04-bugfix_D_r1,04-bugfix,Impossible Churn Regression,D,Ponytail,arms/D-ponytail.md,1,true,true,true
+v04pilot_04-bugfix_D_r2,04-bugfix,Impossible Churn Regression,D,Ponytail,arms/D-ponytail.md,2,true,true,true
+v04pilot_04-bugfix_E_r1,04-bugfix,Impossible Churn Regression,E,ai-engineering-skills,arms/E-ai-engineering-skills.md,1,true,true,true
+v04pilot_04-bugfix_E_r2,04-bugfix,Impossible Churn Regression,E,ai-engineering-skills,arms/E-ai-engineering-skills.md,2,true,true,true
+v04pilot_04-bugfix_F_r1,04-bugfix,Impossible Churn Regression,F,ai-engineering-skills + Ponytail,arms/F-ai-engineering-skills-ponytail.md,1,true,true,true
+v04pilot_04-bugfix_F_r2,04-bugfix,Impossible Churn Regression,F,ai-engineering-skills + Ponytail,arms/F-ai-engineering-skills-ponytail.md,2,true,true,true

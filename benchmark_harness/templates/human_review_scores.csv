@@ -1,0 +1,1 @@
+run_id,reviewer_id,task_id,arm_id,repeat,intent_capture,scope_control,minimality,correctness,verification_quality,handoff_quality,maintainability,risk_awareness,rediscovery_burden,reviewer_confidence,functional_score,workflow_prep_score,cap_applied,cap_reason,reviewer_notes

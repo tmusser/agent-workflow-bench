@@ -1,0 +1,7 @@
+customer_id,cancelled_at,reason
+C005,2024-02-15,price
+C001,2024-03-10,missing_feature
+C002,2024-03-11,budget
+C003,2024-03-12,low_usage
+C007,2024-03-20,consolidation
+C010,2024-03-18,implementation_delay
