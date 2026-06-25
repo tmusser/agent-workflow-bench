@@ -14,6 +14,7 @@ STARTER="${STARTER:-$STARTER_DEFAULT}"
 TASK_PROMPT="${TASK_PROMPT:-$TASK_PROMPT_DEFAULT}"
 MANIFEST="${MANIFEST:-$MANIFEST_DEFAULT}"
 HIDDEN_EVALUATOR_MODULE="${HIDDEN_EVALUATOR_MODULE:-$HIDDEN_EVALUATOR_MODULE_DEFAULT}"
+RESUME_HIDDEN_EVALUATOR_MODULE="${RESUME_HIDDEN_EVALUATOR_MODULE:-$RESUME_HIDDEN_EVALUATOR_MODULE_DEFAULT}"
 ARM_WRAPPER="${ARM_WRAPPER:-$ARM_WRAPPER_DEFAULT}"
 RUN_PREFIX="${RUN_PREFIX:-$RUN_PREFIX_DEFAULT}"
 EXPECTED_STARTER_VERIFY_FAILURE="${EXPECTED_STARTER_VERIFY_FAILURE:-$EXPECTED_STARTER_VERIFY_FAILURE_DEFAULT}"
@@ -25,7 +26,7 @@ FULL_REPO="benchmark-data/resume-workspaces/${RUN_ID}/full/repo"
 STRIPPED_REPO="benchmark-data/resume-workspaces/${RUN_ID}/stripped/repo"
 FULL_OUT="benchmark-data/resume-runs/${RUN_ID}_full"
 STRIPPED_OUT="benchmark-data/resume-runs/${RUN_ID}_stripped"
-FRESH_PROMPT="benchmark_harness/protocols/FRESH_SESSION_PROMPT.md"
+FRESH_PROMPT="${FRESH_SESSION_PROMPT:-$FRESH_SESSION_PROMPT_DEFAULT}"
 
 CLAUDE_CMD="${CLAUDE_CMD:-claude}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-sonnet}"
@@ -34,6 +35,8 @@ CLAUDE_MAX_TURNS="${CLAUDE_MAX_TURNS:-20}"
 CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-dangerously-skip-permissions}"
 CLAUDE_PLUGIN_DIR="${CLAUDE_PLUGIN_DIR:-}"
 CLAUDE_OUTPUT_FORMAT="${CLAUDE_OUTPUT_FORMAT:-text}"
+# Tip: set CLAUDE_OUTPUT_FORMAT=json to let run_metrics.json capture any usage
+# metadata the Claude CLI emits, including num_turns and token counts.
 
 usage() {
   cat <<EOF_USAGE
@@ -59,6 +62,7 @@ Default task:   ${TASK_SLUG} (${TASK_ID})
 Default RUN_ID: ${RUN_ID}
 Default arm:    ${ARM_SLUG}
 Claude default: ${CLAUDE_CMD} --model ${CLAUDE_MODEL} --effort ${CLAUDE_EFFORT} --max-turns ${CLAUDE_MAX_TURNS} ${CLAUDE_PERMISSION_MODE}
+Tip: set CLAUDE_OUTPUT_FORMAT=json to let run_metrics.json capture num_turns and usage metadata when the Claude CLI exposes it.
 
 Override examples:
   CLAUDE_MODEL=sonnet CLAUDE_EFFORT=low ./tools/pilot_smoke.sh auto-a-r1
@@ -280,6 +284,19 @@ init_run() {
     --dest-repo "$WORK" \
     --metadata-out "$RUN_DIR/run_workspace_manifest.json"
 
+  if [[ "$ARM_SLUG" == E-* ]]; then
+    if [[ -z "$CLAUDE_PLUGIN_DIR" ]]; then
+      echo "ERROR: E arms require CLAUDE_PLUGIN_DIR so .benchmark/SKILL_RUNTIME_CONTEXT.md can be generated." >&2
+      exit 2
+    fi
+    python -m benchmark_harness.skill_runtime_context \
+      --workspace-root "$WORK" \
+      --plugin-dir "$CLAUDE_PLUGIN_DIR" \
+      --task-slug "$TASK_SLUG" \
+      --arm-slug "$ARM_SLUG" \
+      --run-id "$RUN_ID"
+  fi
+
   python -m benchmark_harness.render_prompt \
     --arm-wrapper "$ARM_WRAPPER" \
     --task-prompt "$TASK_PROMPT" \
@@ -332,6 +349,28 @@ run_claude_print() {
 
   local exit_abs exit_code
   exit_abs="${root_dir}/${out_dir}/claude_exit_code.txt"
+  local start_ns end_ns
+  start_ns="$(python - <<'PY'
+import time
+print(time.time_ns())
+PY
+)"
+
+  python -m benchmark_harness.run_provenance \
+    --out "${root_dir}/${out_dir}/run_provenance.json" \
+    --root "$root_dir" \
+    --run-id "$RUN_ID" \
+    --task-slug "$TASK_SLUG" \
+    --arm-slug "$ARM_SLUG" \
+    --arm-wrapper "$ARM_WRAPPER" \
+    --task-prompt "$TASK_PROMPT" \
+    --resume-prompt "$FRESH_PROMPT" \
+    --label "$label" \
+    --model "$CLAUDE_MODEL" \
+    --effort "$CLAUDE_EFFORT" \
+    --max-turns "$CLAUDE_MAX_TURNS" \
+    --permission-mode "$CLAUDE_PERMISSION_MODE" \
+    --output-format "$CLAUDE_OUTPUT_FORMAT"
 
   set +e
   (
@@ -350,7 +389,14 @@ run_claude_print() {
   )
   exit_code=$?
   set -e
+  end_ns="$(python - <<'PY'
+import time
+print(time.time_ns())
+PY
+)"
   echo "$exit_code" > "$exit_abs"
+
+  write_run_metrics "$out_dir" "$label" "$exit_code" "$start_ns" "$end_ns" "$stdout_abs" "$stderr_abs"
 
   echo "Claude run complete with exit code: $exit_code"
   echo "  stdout: $out_dir/claude_stdout.txt"
@@ -362,6 +408,160 @@ run_claude_print() {
     echo "Last 40 stderr lines:"
     tail -40 "$stderr_abs" || true
   fi
+}
+
+write_run_metrics() {
+  local out_dir="$1"
+  local label="$2"
+  local exit_code="$3"
+  local start_ns="$4"
+  local end_ns="$5"
+  local stdout_abs="$6"
+  local stderr_abs="$7"
+
+  local root_dir metrics_abs stdout_bytes stderr_bytes stdout_lines stderr_lines wall_clock_seconds
+  root_dir="$(pwd)"
+  metrics_abs="${root_dir}/${out_dir}/run_metrics.json"
+
+  stdout_bytes=$(wc -c < "$stdout_abs" | tr -d ' ')
+  stderr_bytes=$(wc -c < "$stderr_abs" | tr -d ' ')
+  stdout_lines=$(wc -l < "$stdout_abs" | tr -d ' ')
+  stderr_lines=$(wc -l < "$stderr_abs" | tr -d ' ')
+  wall_clock_seconds="$(python - "$start_ns" "$end_ns" <<'PY'
+import sys
+
+start_ns = int(sys.argv[1])
+end_ns = int(sys.argv[2])
+print(f"{(end_ns - start_ns) / 1_000_000_000:.3f}")
+PY
+)"
+
+  RUN_ID="$RUN_ID" \
+  TASK_SLUG="$TASK_SLUG" \
+  ARM_SLUG="$ARM_SLUG" \
+  LABEL="$label" \
+  MODEL="$CLAUDE_MODEL" \
+  EFFORT="$CLAUDE_EFFORT" \
+  MAX_TURNS="$CLAUDE_MAX_TURNS" \
+  PERMISSION_MODE="$CLAUDE_PERMISSION_MODE" \
+  OUTPUT_FORMAT="$CLAUDE_OUTPUT_FORMAT" \
+  CLAUDE_EXIT_CODE="$exit_code" \
+  WALL_CLOCK_SECONDS="$wall_clock_seconds" \
+  STDOUT_BYTES="$stdout_bytes" \
+  STDERR_BYTES="$stderr_bytes" \
+  STDOUT_LINES="$stdout_lines" \
+  STDERR_LINES="$stderr_lines" \
+  STDOUT_PATH="$stdout_abs" \
+  STDERR_PATH="$stderr_abs" \
+  python - "$metrics_abs" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import re
+import sys
+
+metrics_path = pathlib.Path(sys.argv[1])
+provenance_path = metrics_path.with_name("run_provenance.json")
+stdout_path = pathlib.Path(os.environ["STDOUT_PATH"])
+stderr_path = pathlib.Path(os.environ["STDERR_PATH"])
+
+
+def read_text(path: pathlib.Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+stdout_text = read_text(stdout_path)
+stderr_text = read_text(stderr_path)
+combined_text = f"{stdout_text}\n{stderr_text}".lower()
+reached_max_turns: bool | str = "unknown"
+if "reached max turns" in combined_text or re.search(r"\bmax turns\b", combined_text):
+    reached_max_turns = True
+
+data: dict[str, object] = {
+    "run_id": os.environ["RUN_ID"],
+    "task_slug": os.environ["TASK_SLUG"],
+    "arm_slug": os.environ["ARM_SLUG"],
+    "label": os.environ["LABEL"],
+    "model": os.environ["MODEL"],
+    "effort": os.environ["EFFORT"],
+    "max_turns": int(os.environ["MAX_TURNS"]),
+    "permission_mode": os.environ["PERMISSION_MODE"],
+    "output_format": os.environ["OUTPUT_FORMAT"],
+    "claude_exit_code": int(os.environ["CLAUDE_EXIT_CODE"]),
+    "reached_max_turns": reached_max_turns,
+    "wall_clock_seconds": float(os.environ["WALL_CLOCK_SECONDS"]),
+    "stdout_bytes": int(os.environ["STDOUT_BYTES"]),
+    "stderr_bytes": int(os.environ["STDERR_BYTES"]),
+    "stdout_lines": int(os.environ["STDOUT_LINES"]),
+    "stderr_lines": int(os.environ["STDERR_LINES"]),
+}
+
+if provenance_path.exists():
+    try:
+        provenance = json.loads(read_text(provenance_path))
+    except Exception as exc:  # pragma: no cover - defensive guard
+        data["provenance_parse_error"] = f"{exc.__class__.__name__}: {exc}"
+    else:
+        if isinstance(provenance, dict):
+            for key in (
+                "requested_arm_slug",
+                "resolved_arm_slug",
+                "arm_slug_mismatch",
+                "alias_applied",
+                "alias_reason",
+                "context_mode",
+                "arm_wrapper_path",
+                "arm_wrapper_sha256",
+                "task_prompt_path",
+                "task_prompt_sha256",
+                "resume_prompt_path",
+                "resume_prompt_sha256",
+            ):
+                if provenance.get(key) is not None:
+                    data[key] = provenance.get(key)
+
+if os.environ["OUTPUT_FORMAT"] == "json":
+    try:
+        raw = json.loads(stdout_text)
+    except Exception as exc:  # pragma: no cover - defensive guard
+        data["claude_json_parse_error"] = f"{exc.__class__.__name__}: {exc}"
+    else:
+        if isinstance(raw, dict):
+            if raw.get("num_turns") is not None:
+                data["actual_turns"] = raw.get("num_turns")
+            for key in ("duration_ms", "duration_api_ms", "ttft_ms", "ttft_stream_ms", "time_to_request_ms", "total_cost_usd", "terminal_reason", "stop_reason", "session_id", "uuid"):
+                if raw.get(key) is not None:
+                    data[key] = raw.get(key)
+            usage = raw.get("usage")
+            if isinstance(usage, dict):
+                for key in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "service_tier", "speed", "inference_geo"):
+                    if usage.get(key) is not None:
+                        data[f"usage_{key}"] = usage.get(key)
+                server_tool_use = usage.get("server_tool_use")
+                if isinstance(server_tool_use, dict):
+                    for key in ("web_search_requests", "web_fetch_requests"):
+                        if server_tool_use.get(key) is not None:
+                            data[f"usage_server_tool_use_{key}"] = server_tool_use.get(key)
+            if reached_max_turns == "unknown":
+                stop_reason = str(raw.get("stop_reason") or "").lower()
+                terminal_reason = str(raw.get("terminal_reason") or "").lower()
+                if stop_reason == "max_turns" or terminal_reason == "max_turns":
+                    reached_max_turns = True
+                elif stop_reason or terminal_reason:
+                    reached_max_turns = False
+
+if reached_max_turns == "unknown":
+    reached_max_turns = False if stdout_text or stderr_text else "unknown"
+data["reached_max_turns"] = reached_max_turns
+
+metrics_path.parent.mkdir(parents=True, exist_ok=True)
+metrics_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
 }
 
 run_initial_claude() {
@@ -403,8 +603,9 @@ collect_initial() {
   echo
 
   if [[ "$ARM_SLUG" != "A-baseline" ]]; then
-    if [[ ! -f "$WORK/SKILL_RUNTIME_PROOF.md" ]]; then
-      cat > "$RUN_DIR/INITIAL_NOT_READY.txt" <<EOF_NOT_READY
+    if [[ "$ARM_SLUG" == E-* ]]; then
+      if [[ ! -f "$WORK/SKILL_RUNTIME_PROOF.md" ]]; then
+        cat > "$RUN_DIR/INITIAL_NOT_READY.txt" <<EOF_NOT_READY
 Initial run is not ready for resume testing.
 
 verify_exit=${verify_code}
@@ -412,18 +613,18 @@ hidden_evaluator_exit=${hidden_code}
 diff_bytes=${diff_bytes}
 skill_runtime_proof=missing
 
-Non-baseline arm did not produce SKILL_RUNTIME_PROOF.md.
+E arm did not produce SKILL_RUNTIME_PROOF.md.
 Do not count this as a skill-runtime-proven run.
 EOF_NOT_READY
-      echo "STOP: non-baseline arm missing SKILL_RUNTIME_PROOF.md."
-      echo "See: $RUN_DIR/INITIAL_NOT_READY.txt"
-      exit 1
-    fi
+        echo "STOP: E arm missing SKILL_RUNTIME_PROOF.md."
+        echo "See: $RUN_DIR/INITIAL_NOT_READY.txt"
+        exit 1
+      fi
 
-    local proof_validation_out
-    proof_validation_out=$(mktemp)
-    if ! python -m benchmark_harness.validate_skill_runtime_proof "$WORK/SKILL_RUNTIME_PROOF.md" >"$proof_validation_out" 2>&1; then
-      cat > "$RUN_DIR/INITIAL_NOT_READY.txt" <<EOF_NOT_READY
+      local proof_validation_out
+      proof_validation_out=$(mktemp)
+      if ! python -m benchmark_harness.validate_skill_runtime_proof "$WORK/SKILL_RUNTIME_PROOF.md" >"$proof_validation_out" 2>&1; then
+        cat > "$RUN_DIR/INITIAL_NOT_READY.txt" <<EOF_NOT_READY
 Initial run is not ready for resume testing.
 
 verify_exit=${verify_code}
@@ -431,42 +632,17 @@ hidden_evaluator_exit=${hidden_code}
 diff_bytes=${diff_bytes}
 skill_runtime_proof=invalid
 
-Non-baseline arm produced SKILL_RUNTIME_PROOF.md, but validation failed.
+E arm produced SKILL_RUNTIME_PROOF.md, but validation failed.
 Do not count this as a skill-runtime-proven run.
 EOF_NOT_READY
-      echo "STOP: non-baseline arm produced invalid SKILL_RUNTIME_PROOF.md."
-      echo "See: $RUN_DIR/INITIAL_NOT_READY.txt"
-      echo "Validator output:"
-      cat "$proof_validation_out" || true
+        echo "STOP: E arm produced invalid SKILL_RUNTIME_PROOF.md."
+        echo "See: $RUN_DIR/INITIAL_NOT_READY.txt"
+        echo "Validator output:"
+        cat "$proof_validation_out" || true
+        rm -f "$proof_validation_out"
+        exit 1
+      fi
       rm -f "$proof_validation_out"
-      exit 1
-    fi
-    rm -f "$proof_validation_out"
-
-    local artifact_count
-    artifact_count=$(find "$WORK" -maxdepth 3 \( \
-      -name "BUGS.md" -o \
-      -name "VERIFY.md" -o \
-      -name "HANDOFF.md" -o \
-      -name "SPEC.md" -o \
-      -name "PLAN.md" -o \
-      -name "DATA_AUDIT.md" -o \
-      -name "TRUST_AUDIT.md" \) | wc -l | tr -d ' ')
-    if [[ "$artifact_count" -eq 0 ]]; then
-      cat > "$RUN_DIR/INITIAL_NOT_READY.txt" <<EOF_NOT_READY
-Initial run is not ready for resume testing.
-
-verify_exit=${verify_code}
-hidden_evaluator_exit=${hidden_code}
-diff_bytes=${diff_bytes}
-workflow_artifacts=missing
-
-Non-baseline arm produced SKILL_RUNTIME_PROOF.md but no workflow artifacts.
-Do not count this as an artifact-mechanism-proven run.
-EOF_NOT_READY
-      echo "STOP: non-baseline arm produced no workflow artifacts."
-      echo "See: $RUN_DIR/INITIAL_NOT_READY.txt"
-      exit 1
     fi
   fi
 
@@ -555,10 +731,14 @@ collect_resume_condition() {
   set +e
   (cd "$repo" && ./VERIFY.sh) > "$out/verification.txt" 2>&1
   local verify_code=$?
-  python -m "$HIDDEN_EVALUATOR_MODULE" \
+  python -m "$RESUME_HIDDEN_EVALUATOR_MODULE" \
     --repo "$repo" > "$out/hidden_evaluator.txt" 2>&1
   local hidden_code=$?
   set -e
+
+  if [[ "$TASK_SLUG" == "07-dashboard-export-scope-pressure" ]]; then
+    cp "$out/hidden_evaluator.txt" "$out/task7_hidden_evaluator.json" 2>/dev/null || true
+  fi
 
   git -C "$repo" status --short > "$out/git_status.txt"
   git -C "$repo" diff --stat HEAD > "$out/diff_stat.txt"
@@ -593,6 +773,23 @@ collect_stripped() {
 make_bundle() {
   require_root
   local bundle="${RUN_ID}-eval-bundle.tar.gz"
+  local inputs=()
+  local candidate
+  for candidate in \
+    "$RUN_DIR" \
+    "$FULL_OUT" \
+    "$STRIPPED_OUT" \
+    "$WORK" \
+    "benchmark-data/resume-workspaces/${RUN_ID}"
+  do
+    if [[ -e "$candidate" ]]; then
+      inputs+=("$candidate")
+    fi
+  done
+  if [[ "${#inputs[@]}" -eq 0 ]]; then
+    echo "ERROR: no bundle inputs found for RUN_ID=$RUN_ID" >&2
+    exit 2
+  fi
   COPYFILE_DISABLE=1 tar \
     --exclude='._*' \
     --exclude='*/._*' \
@@ -601,12 +798,7 @@ make_bundle() {
     --exclude='*/.pytest_cache' \
     --exclude='*/.git' \
     -czf "$bundle" \
-    "$RUN_DIR" \
-    "$FULL_OUT" \
-    "$STRIPPED_OUT" \
-    "$WORK" \
-    "benchmark-data/resume-workspaces/${RUN_ID}/full" \
-    "benchmark-data/resume-workspaces/${RUN_ID}/stripped"
+    "${inputs[@]}"
 
   echo "Created eval bundle: $(pwd)/$bundle"
   echo "Upload this file for evaluation."
@@ -626,17 +818,22 @@ status_run() {
     "$RUN_DIR/claude_stdout.txt" \
     "$RUN_DIR/claude_stderr.txt" \
     "$RUN_DIR/claude_exit_code.txt" \
+    "$RUN_DIR/run_provenance.json" \
     "$RUN_DIR/verification_final.txt" \
     "$RUN_DIR/hidden_evaluator_final.txt" \
     "$RUN_DIR/diff.patch" \
     "$FULL_OUT/claude_stdout.txt" \
     "$FULL_OUT/claude_stderr.txt" \
     "$FULL_OUT/claude_exit_code.txt" \
+    "$FULL_OUT/run_provenance.json" \
     "$FULL_OUT/FRESH_SESSION_REVIEW.md" \
+    "$FULL_OUT/task7_hidden_evaluator.json" \
     "$STRIPPED_OUT/claude_stdout.txt" \
     "$STRIPPED_OUT/claude_stderr.txt" \
     "$STRIPPED_OUT/claude_exit_code.txt" \
-    "$STRIPPED_OUT/FRESH_SESSION_REVIEW.md"; do
+    "$STRIPPED_OUT/run_provenance.json" \
+    "$STRIPPED_OUT/FRESH_SESSION_REVIEW.md" \
+    "$STRIPPED_OUT/task7_hidden_evaluator.json"; do
     if [[ -e "$f" ]]; then
       echo "✓ $f"
     else

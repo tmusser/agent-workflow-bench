@@ -22,3 +22,12 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["benchmark_harness*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+norecursedirs = [
+  "benchmark-data",
+  "local_plugins",
+  ".venv",
+  ".git",
+]

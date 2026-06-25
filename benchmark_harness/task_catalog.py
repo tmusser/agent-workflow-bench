@@ -17,6 +17,8 @@ class TaskConfig:
     hidden_evaluator_module: str
     run_prefix: str
     expected_starter_verify_failure: bool
+    resume_evaluator_module: str | None = None
+    fresh_session_prompt: str = "benchmark_harness/protocols/FRESH_SESSION_PROMPT.md"
     arm_wrapper_overrides: Mapping[str, str] = field(default_factory=dict)
 
 
@@ -46,6 +48,39 @@ TASKS: dict[str, TaskConfig] = {
             "E-ai-engineering-skills": "arms/E-ai-engineering-skills-task5.md",
         },
     ),
+    "06-activation-metric-migration": TaskConfig(
+        task_slug="06-activation-metric-migration",
+        task_id="06-activation",
+        task_name="Activation Metric v2 Migration",
+        starter_repo="tasks/06-activation-metric-migration/starter_repo",
+        task_prompt="tasks/06-activation-metric-migration/starter_repo/TASK.md",
+        manifest="tasks/06-activation-metric-migration/task_output_manifest.yml",
+        hidden_evaluator_module="benchmark_harness.evaluators.task6_hidden_evaluator",
+        run_prefix="v06pilot_06-activation",
+        expected_starter_verify_failure=True,
+        arm_wrapper_overrides={
+            "B-strong-no-skill": "arms/B-strong-no-skill-task6.md",
+            "E-ai-engineering-skills": "arms/E-ai-engineering-skills-task6.md",
+        },
+    ),
+    "07-dashboard-export-scope-pressure": TaskConfig(
+        task_slug="07-dashboard-export-scope-pressure",
+        task_id="07-dashboard-export",
+        task_name="Finance Weekly CSV Export",
+        starter_repo="tasks/07-dashboard-export-scope-pressure/starter_repo",
+        task_prompt="tasks/07-dashboard-export-scope-pressure/starter_repo/TASK.md",
+        manifest="tasks/07-dashboard-export-scope-pressure/task_output_manifest.yml",
+        hidden_evaluator_module="benchmark_harness.evaluators.task7_hidden_evaluator",
+        resume_evaluator_module="benchmark_harness.evaluators.task7_resume_evaluator",
+        fresh_session_prompt="benchmark_harness/protocols/FRESH_SESSION_PROMPT_TASK7.md",
+        run_prefix="v07pilot_07-dashboard-export",
+        expected_starter_verify_failure=True,
+        arm_wrapper_overrides={
+            "B-baseline": "arms/B-strong-no-skill-task7.md",
+            "B-strong-no-skill": "arms/B-strong-no-skill-task7.md",
+            "E-ai-engineering-skills": "arms/E-ai-engineering-skills-task7.md",
+        },
+    ),
 }
 
 
@@ -66,6 +101,8 @@ def resolve_defaults(task_slug: str, arm_slug: str) -> dict[str, str]:
         "TASK_PROMPT_DEFAULT": task.task_prompt,
         "MANIFEST_DEFAULT": task.manifest,
         "HIDDEN_EVALUATOR_MODULE_DEFAULT": task.hidden_evaluator_module,
+        "RESUME_HIDDEN_EVALUATOR_MODULE_DEFAULT": task.resume_evaluator_module or task.hidden_evaluator_module,
+        "FRESH_SESSION_PROMPT_DEFAULT": task.fresh_session_prompt,
         "RUN_PREFIX_DEFAULT": task.run_prefix,
         "ARM_WRAPPER_DEFAULT": arm_wrapper,
         "EXPECTED_STARTER_VERIFY_FAILURE_DEFAULT": "true" if task.expected_starter_verify_failure else "false",

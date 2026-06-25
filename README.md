@@ -19,7 +19,8 @@ For a compact summary, see [docs/overview.md](docs/overview.md).
 
 - A pilot harness for workflow-sensitive agent work.
 - A place to test whether an agent can leave durable verification evidence, not just a passing patch.
-- A benchmark with two current tasks: one bugfix/resume task and one data-trust task.
+- A benchmark with multiple current tasks: a bugfix/resume task, a data-trust task,
+  an activation-migration task, and a scope-pressure export task.
 
 ## 2. What This Is Not
 
@@ -40,6 +41,14 @@ For a compact summary, see [docs/overview.md](docs/overview.md).
 
 - The visible task audits suspicious campaign-lift data without turning it into an overconfident causal story.
 - The benchmark checks whether the agent preserves blockers, refuses unsupported claims, and leaves interpretable evidence.
+
+### Task 6: Activation Metric v2 Migration
+
+- Planned / under construction. See [docs/task6.md](docs/task6.md).
+
+### Task 7: Finance Weekly CSV Export
+
+- Planned / under construction. See [docs/task7.md](docs/task7.md).
 
 ## 4. Arms
 
@@ -100,6 +109,7 @@ RUN_ID=v04pilot_04-bugfix_A_r1 \
 ```
 
 For Task 5 details and run examples, see [docs/task5.md](docs/task5.md).
+For Task 7 details and run examples, see [docs/task7.md](docs/task7.md).
 
 ## 7. Scorecard
 

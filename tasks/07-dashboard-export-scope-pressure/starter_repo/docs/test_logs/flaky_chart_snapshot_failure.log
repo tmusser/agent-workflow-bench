@@ -1,0 +1,4 @@
+2022-11-14T09:12:08Z chart_snapshot
+WARN: chart snapshot diff detected in unrelated dashboard rendering test
+INFO: retrying snapshot capture
+INFO: retry passed

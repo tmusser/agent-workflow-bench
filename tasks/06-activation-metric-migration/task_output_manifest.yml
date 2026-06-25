@@ -1,0 +1,36 @@
+required_outputs:
+  - path: outputs/activation_v2_public.csv
+    type: task_output
+  - path: outputs/activation_v1_v2_comparison.csv
+    type: resume_task_output
+
+required_docs:
+  - path: TASK.md
+    type: public_prompt
+  - path: README.md
+    type: public_doc
+  - path: docs/product_activation_v2.md
+    type: public_metric_definition
+
+workflow_artifact_patterns:
+  - SPEC.md
+  - PLAN.md
+  - TODO.md
+  - VERIFY.md
+  - HANDOFF.md
+  - BUGS.md
+  - MIGRATION_NOTES.md
+  - IMPLEMENTATION_NOTES.md
+  - IMPLEMENTATION_NOTE.md
+  - implementation_notes.md
+  - implementation_note.md
+  - SKILL_RUNTIME_PROOF.md
+  - skill_runtime_proof.md
+  - NOTES.md
+  - docs/*handoff*.md
+  - docs/*verification*.md
+  - docs/*migration-note*.md
+
+strip_timing:
+  allowed_phase: before_resume_run_only
+  forbidden_after_resume_outputs: true

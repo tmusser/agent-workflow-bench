@@ -3,7 +3,7 @@
 ## Run
 - Run ID: TO_BE_FILLED
 - Arm: TO_BE_FILLED
-- Task: 04-bugfix — Impossible Churn Regression
+- Task: TO_BE_FILLED
 - Repeat: TO_BE_FILLED
 
 ## Skill source

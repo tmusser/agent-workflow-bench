@@ -29,7 +29,7 @@ VALID_PROOF = """# Skill Runtime Proof
 
 ## Pre-run availability check
 - Command run: test -f ~/.claude/skills/repo/README.md
-- Result: pass
+- Result: available
 - Evidence path: benchmark-data/runs/r1/skill_available.txt
 
 ## During-run evidence
@@ -81,3 +81,8 @@ def test_template_mode_allows_blank_template(tmp_path: Path):
 
     assert validate(path, allow_template=True) == []
     assert validate(path) != []
+
+
+def test_template_task_field_is_placeholder():
+    template = Path(__file__).resolve().parents[1] / "templates" / "SKILL_RUNTIME_PROOF_TEMPLATE.md"
+    assert "- Task: TO_BE_FILLED" in template.read_text(encoding="utf-8")

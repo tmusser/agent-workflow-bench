@@ -1,0 +1,4 @@
+event_id,user_id,event_at,event_name,event_source
+E001,P001,2026-01-06T10:00:00,activation_completed,app
+E002,P003,2026-01-24T14:00:00,activation_completed,app
+E003,P004,2026-02-03T11:00:00,activation_completed,app

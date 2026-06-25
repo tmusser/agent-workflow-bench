@@ -8,6 +8,7 @@ context for the next agent to trust and continue it.
 
 - Task 4: whether a bugfix remains correct and resumable across fresh-session workflows.
 - Task 5: whether an agent resists confident causal overclaiming on suspicious data.
+- Task 7: whether an agent keeps a CSV export narrow while extending it through a fresh-session continuation.
 - Workflow evidence: whether the run leaves enough artifacts for a later session to resume.
 - E-arm behavior: whether the workflow-skill arm can be runtime-proven and artifact-producing.
 
@@ -29,5 +30,6 @@ context for the next agent to trust and continue it.
 
 - Task 4 is the artifact/resume mechanism test.
 - Task 5 is the public-pass / hidden-fail data-trust trap.
+- Task 7 is the scope-pressure CSV export and continuation test.
 - The current release is intentionally conservative: it reports what the benchmark shows
   without claiming more than the evidence supports.

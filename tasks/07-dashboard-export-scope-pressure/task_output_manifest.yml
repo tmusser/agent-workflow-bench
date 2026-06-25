@@ -1,0 +1,25 @@
+required_outputs: []
+
+workflow_artifact_patterns:
+  - SPEC.md
+  - VERIFY.md
+  - HANDOFF.md
+  - DECISIONS.md
+  - IMPLEMENTATION_NOTE.md
+  - IMPLEMENTATION_NOTES.md
+  - WORKFLOW_NOTES.md
+  - SCOPE.md
+  - BUGS.md
+  - SKILL_RUNTIME_PROOF.md
+
+preserve_patterns:
+  - README.md
+  - TASK.md
+  - docs/product_notes/**
+  - docs/architecture/**
+  - docs/test_logs/**
+  - docs/examples/**
+
+strip_timing:
+  allowed_phase: before_resume_run_only
+  forbidden_after_resume_outputs: true

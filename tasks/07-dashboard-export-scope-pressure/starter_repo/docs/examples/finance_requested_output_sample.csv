@@ -1,0 +1,3 @@
+week_start,region,segment,gross_revenue_cents,refunds_cents,net_revenue_cents
+2026-06-01,AMER,SMB,12000,500,11500
+2026-06-01,EMEA,"Enterprise, Plus",20000,1000,19000
