@@ -332,6 +332,15 @@ def _protected_paths_touched(repo: Path, changed_files: Iterable[str], new_depen
     return touched
 
 
+def _test_paths_changed(changed_files: Iterable[str]) -> list[str]:
+    paths: list[str] = []
+    for rel in changed_files:
+        path = Path(rel)
+        if rel.startswith("tests/") or "/tests/" in rel or path.name.startswith("test_"):
+            paths.append(rel)
+    return paths
+
+
 def _imports_attic(repo: Path, changed_files: Iterable[str]) -> bool:
     for rel in changed_files:
         if not rel.startswith("src/") or not rel.endswith(".py"):
@@ -413,23 +422,29 @@ def _content_present(texts: Iterable[str], patterns: tuple[str, ...]) -> bool:
     return False
 
 
-def _artifact_content_fields(texts: list[str]) -> dict[str, bool | int]:
+def _skill_runtime_proof_file_present(repo: Path) -> bool:
+    return (repo / "SKILL_RUNTIME_PROOF.md").is_file()
+
+
+def _artifact_content_fields(repo: Path, texts: list[str]) -> dict[str, bool | int]:
     fields = {field: _content_present(texts, patterns) for field, patterns in ARTIFACT_PATTERNS.items()}
     fields["skill_spec_present"] = _content_present(texts, SKILL_PATTERNS["skill_spec_present"])
     fields["skill_verify_present"] = _content_present(texts, SKILL_PATTERNS["skill_verify_present"])
     fields["skill_handoff_present"] = _content_present(texts, SKILL_PATTERNS["skill_handoff_present"])
-    fields["skill_runtime_proof_present"] = _content_present(texts, SKILL_PATTERNS["skill_runtime_proof_present"])
+    fields["skill_runtime_proof_present"] = _skill_runtime_proof_file_present(repo)
+    fields["skill_runtime_proof_mentioned"] = _content_present(texts, SKILL_PATTERNS["skill_runtime_proof_present"])
     fields["artifact_content_score"] = sum(1 for key in ARTIFACT_PATTERNS if fields[key])
     return fields
 
 
-def _task7_artifact_score_components(texts: list[str]) -> dict[str, bool | int]:
+def _task7_artifact_score_components(repo: Path, texts: list[str], artifact_content_score: int) -> dict[str, bool | int]:
     components = {field: _content_present(texts, patterns) for field, patterns in TASK7_ARTIFACT_PATTERNS.items()}
     components["skill_spec_present"] = _content_present(texts, SKILL_PATTERNS["skill_spec_present"])
     components["skill_verify_present"] = _content_present(texts, SKILL_PATTERNS["skill_verify_present"])
     components["skill_handoff_present"] = _content_present(texts, SKILL_PATTERNS["skill_handoff_present"])
-    components["skill_runtime_proof_present"] = _content_present(texts, SKILL_PATTERNS["skill_runtime_proof_present"])
-    components["artifact_content_score"] = sum(1 for key in TASK7_ARTIFACT_PATTERNS if components[key])
+    components["skill_runtime_proof_present"] = _skill_runtime_proof_file_present(repo)
+    components["skill_runtime_proof_mentioned"] = _content_present(texts, SKILL_PATTERNS["skill_runtime_proof_present"])
+    components["artifact_content_score"] = artifact_content_score
     return components
 
 
@@ -494,6 +509,7 @@ def _compare_csv_rows(actual_rows: list[dict[str, str]] | None, expected_rows: l
 def _build_result(repo: Path, phase: str) -> dict[str, object]:
     changed_files = _changed_files(repo)
     source_files = _source_files_changed(repo, changed_files)
+    test_paths_changed = _test_paths_changed(changed_files)
     source_lines_added = _source_lines_added(repo, source_files)
     new_dependencies = _new_dependencies(repo)
     protected_paths_touched = _protected_paths_touched(repo, changed_files, new_dependencies)
@@ -501,7 +517,7 @@ def _build_result(repo: Path, phase: str) -> dict[str, object]:
     attic_import_detected = _imports_attic(repo, changed_files)
     fixture_integrity_green = _fixture_integrity_green(repo)
     artifact_texts = _artifact_texts(repo)
-    artifact_fields = _artifact_content_fields(artifact_texts)
+    artifact_fields = _artifact_content_fields(repo, artifact_texts)
 
     verify_exit, verify_stdout, verify_stderr, verify_timed_out = _run_verify(repo)
 
@@ -725,7 +741,11 @@ def _build_result(repo: Path, phase: str) -> dict[str, object]:
         errors.append("protected attic spike was imported")
 
     charting_touched = any(rel.startswith("src/finboard/charting/") for rel in protected_paths_touched)
-    artifact_score_components = _task7_artifact_score_components(artifact_texts)
+    artifact_score_components = _task7_artifact_score_components(
+        repo,
+        artifact_texts,
+        artifact_fields["artifact_content_score"],
+    )
     overall_green = not errors and (
         (phase == "initial" and initial_functional_green and initial_scope_green)
         or (phase == "resume" and resume_functional_green and resume_scope_green)
@@ -748,6 +768,8 @@ def _build_result(repo: Path, phase: str) -> dict[str, object]:
         "charting_touched": charting_touched,
         "attic_imported": attic_import_detected,
         "source_files_changed": len(source_files),
+        "tests_changed": bool(test_paths_changed),
+        "test_paths_changed": test_paths_changed,
         "total_files_changed": len(changed_files),
         "source_lines_added": source_lines_added,
         "artifact_scope_boundary": artifact_fields["artifact_scope_boundary"],
@@ -762,6 +784,7 @@ def _build_result(repo: Path, phase: str) -> dict[str, object]:
         "skill_verify_present": artifact_fields["skill_verify_present"],
         "skill_handoff_present": artifact_fields["skill_handoff_present"],
         "skill_runtime_proof_present": artifact_fields["skill_runtime_proof_present"],
+        "skill_runtime_proof_mentioned": artifact_fields["skill_runtime_proof_mentioned"],
         "resume_functional_green": resume_functional_green,
         "resume_scope_green": resume_scope_green,
         "resume_region_filter_green": resume_region_filter_green,

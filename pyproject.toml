@@ -30,4 +30,7 @@ norecursedirs = [
   "local_plugins",
   ".venv",
   ".git",
+  "__pycache__",
+  ".pytest_cache",
+  "starter_repo",
 ]

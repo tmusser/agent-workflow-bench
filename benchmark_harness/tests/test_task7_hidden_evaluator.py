@@ -231,6 +231,8 @@ def test_hidden_evaluator_passes_correct_initial_repo(tmp_path: Path):
     assert result["json_regression_detected"] is False
     assert result["fixture_integrity_green"] is True
     assert result["fixture_data_changed"] is False
+    assert result["tests_changed"] is False
+    assert result["test_paths_changed"] == []
     assert result["protected_paths_touched"] == []
     assert result["new_dependencies"] == []
     assert result["dependencies_added"] == []
@@ -239,6 +241,8 @@ def test_hidden_evaluator_passes_correct_initial_repo(tmp_path: Path):
     assert result["attic_imported"] is False
     assert result["artifact_content_score"] == 0
     assert result["artifact_score_components"]["artifact_content_score"] == 0
+    assert result["skill_runtime_proof_present"] is False
+    assert result["skill_runtime_proof_mentioned"] is False
     assert result["overall_green"] is True
     assert result["evaluator_version"] == "task7-hidden-evaluator-v2"
     assert result["resume_functional_green"] is False
@@ -262,6 +266,8 @@ def test_hidden_evaluator_passes_correct_resume_repo(tmp_path: Path):
     assert result["resume_region_week_expected_row_count"] == 2
     assert result["resume_no_match_behavior_preserved"] is True
     assert result["resume_small_diff_green"] is True
+    assert result["tests_changed"] is False
+    assert result["test_paths_changed"] == []
     assert result["overall_green"] is True
     assert resume.main(["--repo", str(repo)]) == 0
 
@@ -373,6 +379,16 @@ def test_hidden_evaluator_reports_generic_framework_without_hard_failure(tmp_pat
     assert hidden.main(["--repo", str(repo), "--phase", "initial"]) == 0
 
 
+def test_hidden_evaluator_tracks_test_changes(tmp_path: Path):
+    repo = _make_correct_repo(tmp_path)
+    _write(repo, "tests/test_cli_public.py", "# touched\n")
+
+    result = hidden.evaluate(repo, phase="resume")
+
+    assert result["tests_changed"] is True
+    assert result["test_paths_changed"] == ["tests/test_cli_public.py"]
+
+
 def test_resume_region_filter_works(tmp_path: Path):
     repo = _make_correct_repo(tmp_path)
 
@@ -439,6 +455,22 @@ def test_artifact_content_score_recognizes_content_in_non_e_filename(tmp_path: P
         ).strip()
         + "\n",
     )
+    _write(
+        repo,
+        "SKILL_RUNTIME_PROOF.md",
+        textwrap.dedent(
+            """
+            # Skill Runtime Proof
+
+            ## Run
+            - Run ID: v07pilot_07-dashboard-export_E_r2
+            - Arm: E skill-routed
+            - Task: 07-dashboard-export-scope-pressure
+            - Repeat: 1
+            """
+        ).strip()
+        + "\n",
+    )
 
     result = hidden.evaluate(repo, phase="resume")
 
@@ -449,10 +481,34 @@ def test_artifact_content_score_recognizes_content_in_non_e_filename(tmp_path: P
     assert result["artifact_verification_evidence"] is True
     assert result["artifact_resume_guidance"] is True
     assert result["artifact_content_score"] == 6
+    assert result["artifact_score_components"]["artifact_content_score"] == result["artifact_content_score"]
     assert result["skill_spec_present"] is True
     assert result["skill_verify_present"] is True
     assert result["skill_handoff_present"] is True
     assert result["skill_runtime_proof_present"] is True
+    assert result["skill_runtime_proof_mentioned"] is True
+
+
+def test_skill_runtime_proof_mention_without_file_does_not_count(tmp_path: Path):
+    repo = _make_correct_repo(tmp_path)
+    _write(
+        repo,
+        "WORKFLOW_NOTES.md",
+        textwrap.dedent(
+            """
+            # Workflow Notes
+
+            The skill runtime proof is mentioned here, but the file is not present.
+            Pinned commit SHA and activation mechanism are discussed informally.
+            """
+        ).strip()
+        + "\n",
+    )
+
+    result = hidden.evaluate(repo, phase="resume")
+
+    assert result["skill_runtime_proof_present"] is False
+    assert result["skill_runtime_proof_mentioned"] is True
 
 
 def test_empty_spec_filename_does_not_earn_full_artifact_score(tmp_path: Path):
