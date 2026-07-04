@@ -25,15 +25,25 @@ SAFE_SUFFIXES = ("_bytes", "_lines", "_path", "_sha256", "_tokens")
 MAX_STRING_LENGTH = 300
 DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
 CONTEXT_WINDOW_ENV_KEYS = ("TELEMETRY_CONTEXT_WINDOW_TOKENS", "CONTEXT_WINDOW_TOKENS")
+INPUT_TOKEN_KEYS = ("usage_input_tokens", "input_tokens", "prompt_tokens", "total_input_tokens")
 
 LLM_METRIC_KEYS = (
     "label",
+    "provider",
+    "runner",
+    "runner_cmd",
+    "runner_exit_code",
+    "agent",
+    "agent_cmd",
+    "agent_exit_code",
     "model",
     "effort",
     "max_turns",
     "permission_mode",
     "output_format",
+    "exit_code",
     "claude_exit_code",
+    "codex_exit_code",
     "reached_max_turns",
     "wall_clock_seconds",
     "stdout_bytes",
@@ -50,6 +60,17 @@ LLM_METRIC_KEYS = (
     "usage_output_tokens",
     "usage_cache_creation_input_tokens",
     "usage_cache_read_input_tokens",
+    "input_tokens",
+    "output_tokens",
+    "prompt_tokens",
+    "completion_tokens",
+    "total_input_tokens",
+    "total_output_tokens",
+    "total_tokens",
+    "cached_input_tokens",
+    "reasoning_tokens",
+    "prompt_cache_hit_tokens",
+    "prompt_cache_miss_tokens",
 )
 PROVENANCE_KEYS = (
     "requested_arm_slug",
@@ -220,6 +241,14 @@ def _positive_int(value: Any) -> int | None:
     return parsed if parsed > 0 else None
 
 
+def _input_tokens_from_metrics(metrics: Mapping[str, Any]) -> tuple[int | None, str | None]:
+    for key in INPUT_TOKEN_KEYS:
+        parsed = _positive_int(metrics.get(key))
+        if parsed is not None:
+            return parsed, key
+    return None, None
+
+
 def context_window_config(env: Mapping[str, str] | None = None) -> tuple[int, str]:
     values = os.environ if env is None else env
     for key in CONTEXT_WINDOW_ENV_KEYS:
@@ -286,16 +315,17 @@ def _context_window_fields(
         "context_window_source": window_source,
     }
 
-    used_tokens = _positive_int(metrics.get("usage_input_tokens"))
-    if used_tokens is not None:
-        fields["estimator"] = "provider_usage_input_tokens"
-        fields["usage_input_tokens"] = used_tokens
+    used_tokens, input_token_key = _input_tokens_from_metrics(metrics)
+    if used_tokens is not None and input_token_key is not None:
+        fields["estimator"] = "run_metrics_input_tokens"
+        fields["input_token_field"] = input_token_key
+        fields[input_token_key] = used_tokens
     else:
         input_file = _input_file_for_phase(phase, out_dir, provenance, root)
         if input_file is None:
             fields["estimator"] = "unavailable"
             fields["status"] = "unknown"
-            fields["reason"] = "no_usage_tokens_or_input_file"
+            fields["reason"] = "no_input_token_metric_or_input_file"
             return fields
         try:
             data = input_file.read_text(encoding="utf-8", errors="replace")
@@ -321,7 +351,7 @@ def _context_window_fields(
     fields["context_window_used_pct"] = used_pct
     fields["remaining_context_window_tokens"] = max(window_tokens - used_tokens, 0)
     fields["status"] = context_pressure_status(used_pct)
-    fields["is_estimate"] = fields["estimator"] != "provider_usage_input_tokens"
+    fields["is_estimate"] = fields["estimator"] != "run_metrics_input_tokens"
     return fields
 
 
