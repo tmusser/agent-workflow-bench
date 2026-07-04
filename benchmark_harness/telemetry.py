@@ -31,10 +31,8 @@ LLM_METRIC_KEYS = (
     "label",
     "provider",
     "runner",
-    "runner_cmd",
     "runner_exit_code",
     "agent",
-    "agent_cmd",
     "agent_exit_code",
     "model",
     "effort",
@@ -219,6 +217,30 @@ def _rel(path: Path, root: Path) -> str:
         return path.as_posix()
 
 
+def _safe_path_value(value: Any, root: Path) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        return candidate.as_posix()
+    try:
+        return candidate.relative_to(root).as_posix()
+    except ValueError:
+        return f"[outside-root]/{candidate.name}"
+
+
+def _safe_provenance_fields(provenance: Mapping[str, Any], root: Path) -> dict[str, Any]:
+    fields = _whitelist(provenance, PROVENANCE_KEYS)
+    for key in list(fields):
+        if key.endswith("_path"):
+            safe_path = _safe_path_value(fields[key], root)
+            if safe_path is None:
+                del fields[key]
+            else:
+                fields[key] = safe_path
+    return fields
+
+
 def _file_metadata(path: Path, root: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
@@ -390,7 +412,7 @@ def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None)
                 task_slug=str(provenance["task_slug"]) if provenance.get("task_slug") else None,
                 arm_slug=str(arm) if arm else None,
                 phase=phase,
-                fields=_whitelist(provenance, PROVENANCE_KEYS),
+                fields=_safe_provenance_fields(provenance, root_path),
             )
 
         if metrics or provenance:
