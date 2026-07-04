@@ -23,13 +23,39 @@ It does **not** copy:
 It may record:
 
 - run id, task slug, arm slug, phase, and command label;
-- model/effort/max-turn settings;
+- provider, model, effort, max-turn, runner, and exit-code metadata;
 - token counts and timing fields when already exposed by `run_metrics.json`;
 - local context-window pressure estimates from existing prompt files or usage metadata;
 - file paths and byte sizes for known outputs and workflow artifacts;
 - provenance hashes that the harness already records.
 
 The implementation uses only Python stdlib and writes only local files.
+
+## Provider / Runner Support
+
+The current smoke wrapper is Claude-shaped because `tools/pilot_smoke.sh` invokes
+Claude Code. The telemetry module itself is not Claude-specific.
+
+Any runner, including a Codex runner, can feed the same telemetry path by writing
+metadata-only files in the existing harness locations:
+
+- `benchmark-data/runs/<RUN_ID>/run_metrics.json`
+- `benchmark-data/runs/<RUN_ID>/run_provenance.json`
+- `benchmark-data/runs/<RUN_ID>/prompt.md` when token usage is unavailable
+
+For token fields, telemetry accepts both current Claude-style keys and generic /
+Codex-style keys:
+
+| Accepted input-token field | Notes |
+| --- | --- |
+| `usage_input_tokens` | Existing Claude JSON usage shape. |
+| `input_tokens` | Generic / Codex-friendly shape. |
+| `prompt_tokens` | Common API-style prompt-token shape. |
+| `total_input_tokens` | Explicit aggregate input-token shape. |
+
+It also preserves safe generic metadata such as `provider`, `agent_exit_code`,
+`runner_exit_code`, `output_tokens`, `completion_tokens`, `reasoning_tokens`, and
+`total_tokens` when those fields exist in `run_metrics.json`.
 
 ## Enable Collection
 
@@ -59,10 +85,10 @@ python -m benchmark_harness.telemetry collect-run --run-id "$RUN_ID" --root .
 
 Telemetry emits a `context_window.status` event without making an extra LLM call.
 
-The event prefers provider-reported `usage_input_tokens` when the Claude CLI
-already exposes it through `run_metrics.json`. When usage tokens are unavailable,
-it reads the local input prompt file only to count characters and estimates tokens
-with a simple `chars / 4` heuristic. It never writes the prompt body to telemetry.
+The event prefers input-token metadata already present in `run_metrics.json`. When
+usage tokens are unavailable, it reads the local input prompt file only to count
+characters and estimates tokens with a simple `chars / 4` heuristic. It never
+writes the prompt body to telemetry.
 
 By default, the context window denominator is `200000` tokens. Override it for a
 run when you want a different local assumption:
