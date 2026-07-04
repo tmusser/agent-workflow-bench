@@ -14,6 +14,7 @@ This is not a universal coding-agent leaderboard.
 It is a narrower benchmark for whether workflow skills improve audit trails, verification evidence, and fresh-session resumability on tasks where generic agents may pass public checks while missing hidden contracts.
 
 For a compact summary, see [docs/overview.md](docs/overview.md).
+For standardized fresh-session continuation scoring, see [docs/fresh-session-resume.md](docs/fresh-session-resume.md).
 
 ## 1. What This Is
 
@@ -143,6 +144,14 @@ TASK_SLUG=01-support-sla-boundary \
 ARM_SLUG=A-baseline \
 RUN_ID=v01pilot_01-sla-boundary_A_r1 \
 ./tools/pilot_smoke.sh auto-a-r1
+```
+
+Evaluate and summarize fresh-session resume behavior after full and stripped continuation runs:
+
+```bash
+python -m benchmark_harness.fresh_session_resume evaluate \
+  --run-id "$RUN_ID" \
+  --resume-evaluator-module benchmark_harness.evaluators.task7_resume_evaluator
 ```
 
 For Task 1 details and run examples, see [docs/task1.md](docs/task1.md).
