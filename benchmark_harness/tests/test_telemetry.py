@@ -43,11 +43,11 @@ def test_allows_content_metadata_counts(tmp_path: Path):
     telemetry.emit(
         out,
         "llm_call.summary",
-        fields={"stdout_bytes": 120, "usage_input_tokens": 42},
+        fields={"stdout_bytes": 120, "usage_input_tokens": 42, "input_tokens": 41},
     )
 
     loaded = telemetry.read_events(out)
-    assert loaded[0]["fields"] == {"stdout_bytes": 120, "usage_input_tokens": 42}
+    assert loaded[0]["fields"] == {"stdout_bytes": 120, "usage_input_tokens": 42, "input_tokens": 41}
 
 
 def test_context_window_helpers_are_local_estimates(monkeypatch: pytest.MonkeyPatch):
@@ -122,13 +122,56 @@ def test_collect_run_uses_existing_artifacts_without_copying_contents(tmp_path: 
     llm = next(event for event in events if event["event_type"] == "llm_call.summary")
     assert llm["fields"]["usage_input_tokens"] == 123
     context = next(event for event in events if event["event_type"] == "context_window.status")
-    assert context["fields"]["estimator"] == "provider_usage_input_tokens"
+    assert context["fields"]["estimator"] == "run_metrics_input_tokens"
+    assert context["fields"]["input_token_field"] == "usage_input_tokens"
     assert context["fields"]["usage_input_tokens"] == 123
     assert context["fields"]["status"] == "low"
     outputs = next(event for event in events if event["event_type"] == "harness.outputs")
     assert outputs["fields"]["files"][0]["path"].endswith("diff.patch")
     collect_end = next(event for event in events if event["event_type"] == "telemetry.collect_end")
     assert collect_end["fields"]["path"] == f"benchmark-data/runs/{run_id}/telemetry.jsonl"
+
+
+def test_collect_run_accepts_codex_style_input_tokens(tmp_path: Path):
+    run_id = "vtest_codex"
+    run_dir = tmp_path / "benchmark-data" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+
+    (run_dir / "run_metrics.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "task_slug": "01-support-sla-boundary",
+                "arm_slug": "C-codex",
+                "label": "initial",
+                "provider": "codex",
+                "model": "gpt-5.5-codex",
+                "agent_exit_code": 0,
+                "input_tokens": 900,
+                "output_tokens": 100,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    out = telemetry.collect_run(root=tmp_path, run_id=run_id)
+    events = telemetry.read_events(out)
+
+    llm = next(event for event in events if event["event_type"] == "llm_call.summary")
+    assert llm["arm_slug"] == "C-codex"
+    assert llm["fields"]["provider"] == "codex"
+    assert llm["fields"]["agent_exit_code"] == 0
+    assert llm["fields"]["input_tokens"] == 900
+    assert llm["fields"]["output_tokens"] == 100
+
+    context = next(event for event in events if event["event_type"] == "context_window.status")
+    assert context["arm_slug"] == "C-codex"
+    assert context["fields"]["estimator"] == "run_metrics_input_tokens"
+    assert context["fields"]["input_token_field"] == "input_tokens"
+    assert context["fields"]["input_tokens"] == 900
+    assert context["fields"]["status"] == "low"
+    assert context["fields"]["is_estimate"] is False
 
 
 def test_collect_run_estimates_context_from_local_input_file(
