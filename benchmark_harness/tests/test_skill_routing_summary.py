@@ -62,7 +62,7 @@ def test_summarize_repo_infers_skills_from_artifacts_and_validates_runtime_proof
     assert summary.inferred_skills["bug-capture"].present is True
     assert summary.inferred_skills["mini-spec"].present is False
     assert summary.summary["skills"] == ["bug-capture", "handoff", "verify-contract"]
-    assert summary.summary["evidence_level"] == "runtime_proven"
+    assert summary.summary["evidence_level"] == "proof_valid_with_artifacts"
 
 
 def test_invalid_skill_runtime_proof_reports_issues(tmp_path: Path):
