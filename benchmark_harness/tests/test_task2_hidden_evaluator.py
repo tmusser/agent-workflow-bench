@@ -62,3 +62,12 @@ def test_hidden_evaluator_rejects_fixture_specific_hardcoding(tmp_path: Path):
     errors = hidden.evaluate(repo)
 
     assert "metrics.py appears to hardcode fixture-specific results" in errors
+
+
+def test_hidden_evaluator_reports_missing_source_without_crashing(tmp_path: Path):
+    repo = _starter_repo(tmp_path)
+    (repo / "src" / "acquisition" / "metrics.py").unlink()
+
+    errors = hidden.evaluate(repo)
+
+    assert any("could not evaluate channel normalization report" in error for error in errors)
