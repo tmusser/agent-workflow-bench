@@ -23,6 +23,13 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _source_text(repo: Path) -> str:
+    source_path = repo / "src" / "commerce" / "metrics.py"
+    if not source_path.exists():
+        return ""
+    return source_path.read_text(encoding="utf-8")
+
+
 def _purge_commerce_modules() -> None:
     for name in list(sys.modules):
         if name == "commerce" or name.startswith("commerce."):
@@ -98,10 +105,10 @@ def _check_synthetic(calculate_product_refund_rates) -> list[str]:
 def evaluate(repo: Path) -> list[str]:
     repo = repo.resolve()
     errors = _check_fixture_hashes(repo)
-    source = (repo / "src" / "commerce" / "metrics.py").read_text(encoding="utf-8")
-    if any(token in source for token in SHORTCUT_TOKENS):
+    source = _source_text(repo)
+    if source and any(token in source for token in SHORTCUT_TOKENS):
         errors.append("metrics.py appears to hardcode fixture-specific results")
-    if any(token in source for token in CLAMP_TOKENS):
+    if source and any(token in source for token in CLAMP_TOKENS):
         errors.append("metrics.py appears to clamp refund rates instead of fixing the order grain")
     try:
         calculate_product_refund_rates, weekly_refund_report = _load_modules(repo)
