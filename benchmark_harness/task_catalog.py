@@ -23,6 +23,17 @@ class TaskConfig:
 
 
 TASKS: dict[str, TaskConfig] = {
+    "01-support-sla-boundary": TaskConfig(
+        task_slug="01-support-sla-boundary",
+        task_id="01-sla-boundary",
+        task_name="Support SLA Boundary Regression",
+        starter_repo="tasks/01-support-sla-boundary/starter_repo",
+        task_prompt="tasks/01-support-sla-boundary/starter_repo/TASK.md",
+        manifest="tasks/01-support-sla-boundary/task_output_manifest.yml",
+        hidden_evaluator_module="benchmark_harness.evaluators.task1_hidden_evaluator",
+        run_prefix="v01pilot_01-sla-boundary",
+        expected_starter_verify_failure=True,
+    ),
     "04-impossible-churn": TaskConfig(
         task_slug="04-impossible-churn",
         task_id="04-bugfix",

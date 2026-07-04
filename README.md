@@ -19,8 +19,8 @@ For a compact summary, see [docs/overview.md](docs/overview.md).
 
 - A pilot harness for workflow-sensitive agent work.
 - A place to test whether an agent can leave durable verification evidence, not just a passing patch.
-- A benchmark with multiple current tasks: a bugfix/resume task, a data-trust task,
-  an activation-migration task, and a scope-pressure export task.
+- A benchmark with current tasks covering localized bugfixes, bugfix/resume behavior, data-trust traps,
+  activation-metric migration, and scope-pressure exports.
 
 ## 2. What This Is Not
 
@@ -31,6 +31,12 @@ For a compact summary, see [docs/overview.md](docs/overview.md).
 - Not a proof of broad agent superiority.
 
 ## 3. Current Tasks
+
+### Task 1: Support SLA Boundary Regression
+
+- The visible task fixes an inclusive/exclusive SLA deadline bug.
+- The benchmark checks whether the fix is localized, preserves the report shape, and avoids fixture edits or hardcoded fixture answers.
+- See [docs/task1.md](docs/task1.md).
 
 ### Task 4: Impossible Churn Regression
 
@@ -48,7 +54,11 @@ For a compact summary, see [docs/overview.md](docs/overview.md).
 
 ### Task 7: Finance Weekly CSV Export
 
-- Planned / under construction. See [docs/task7.md](docs/task7.md).
+- A scoped dashboard export task under pressure to widen the implementation.
+- The benchmark checks whether the agent preserves existing JSON behavior, keeps CSV support narrow, and handles fresh-session continuation.
+- See [docs/task7.md](docs/task7.md).
+
+Tasks 2 and 3 are intentionally still open slots for smaller bridge tasks between the Task 1 warmup and the Task 4 resume-heavy bugfix.
 
 ## 4. Arms
 
@@ -69,6 +79,7 @@ Proven by the current pilot:
 
 - Task 4: the artifact/resume mechanism works.
 - Task 5: the public-pass/hidden-fail data-trust trap works.
+- Task 7: sharper invalidation around compatibility seams and test integrity is more useful than heavier ceremony.
 - The E arm can be runtime-proven and artifact-producing.
 
 Not proven:
@@ -77,9 +88,21 @@ Not proven:
 - skills guarantee functional correctness.
 - these tasks generalize to all coding work.
 
-### Illustrative current-pilot scorecard rows
+### Current task evidence summary
 
 This table reflects the current pilot, not a universal result set.
+
+| Task | Status | Evidence / reading |
+| --- | --- | --- |
+| Task 1 | newly added / unrun | Low-ceremony SLA boundary bugfix meant to fill the missing first rung. |
+| Task 4 | piloted | Functional fixes landed; skill-routed runs left durable `BUGS.md`, `VERIFY.md`, and `HANDOFF.md`-style context for audit/resume. |
+| Task 5 | piloted negative control | Public checks could pass while hidden denominator/leakage traps still failed; clearer audit trails helped inspection but did not guarantee correctness. |
+| Task 6 | under construction | Activation metric migration harness exists but should not be advertised as a completed pilot result yet. |
+| Task 7 | piloted / hardened | Stronger settings saturated on behavior; weaker settings exposed API seam and test-integrity failures. The hardening lesson was sharper invalidation, not more process. |
+
+### Illustrative current-pilot scorecard rows
+
+These rows are examples of the current scorecard shape. They are not a complete leaderboard.
 
 | Task | Arm | Scorecard shape | Artifact mechanism | Reading |
 | --- | --- | --- | --- | --- |
@@ -87,6 +110,8 @@ This table reflects the current pilot, not a universal result set.
 | Task 4 | E ai-engineering-skills | green | active | Functional pass with workflow artifacts and resume support. |
 | Task 5 | A baseline | initial_fail / hidden fail | inactive | Expected negative result from the public-pass / hidden-fail trap. |
 | Task 5 | E ai-engineering-skills | initial_fail / skill proof + artifacts / hidden fail | inactive | Skill proof and workflow artifacts are present, but the hidden trust gate still fails. |
+| Task 7 | B / E stronger settings | behavior saturated | varies | Strong prompting and skill routing both reached the narrow behavior in stronger settings. |
+| Task 7 | weaker settings | hidden failures exposed | varies | Compatibility seams, no-match behavior, and test-integrity checks caught fragile implementations. |
 
 ## 6. Quickstart
 
@@ -102,12 +127,13 @@ python -m pytest benchmark_harness/tests -q
 Run one task through the smoke harness:
 
 ```bash
-TASK_SLUG=04-impossible-churn \
+TASK_SLUG=01-support-sla-boundary \
 ARM_SLUG=A-baseline \
-RUN_ID=v04pilot_04-bugfix_A_r1 \
+RUN_ID=v01pilot_01-sla-boundary_A_r1 \
 ./tools/pilot_smoke.sh auto-a-r1
 ```
 
+For Task 1 details and run examples, see [docs/task1.md](docs/task1.md).
 For Task 5 details and run examples, see [docs/task5.md](docs/task5.md).
 For Task 7 details and run examples, see [docs/task7.md](docs/task7.md).
 
@@ -127,9 +153,11 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 - The current task set is designed to surface workflow and verification behavior, not to rank all agents on all coding work.
 - Task 5 yellow rows are useful negative results, not broken scorecard rows.
 - Generated artifacts, bundles, and local caches should stay out of source control.
+- Task 1 has not been piloted yet; it is a harness/task addition, not a benchmark result.
 
 ## 9. Roadmap
 
+- Add Tasks 2 and 3 as bridge tasks between the Task 1 warmup and Task 4 resumability benchmark.
 - Add more tasks that stress different workflow skills.
 - Keep public verification and assessment checks separate.
 - Continue publishing scorecards and bundles as generated artifacts, not source.
