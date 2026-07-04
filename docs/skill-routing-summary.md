@@ -110,7 +110,7 @@ Default output paths:
   "summary": {
     "skills_inferred": 2,
     "skills": ["handoff", "verify-contract"],
-    "evidence_level": "runtime_proven"
+    "evidence_level": "proof_valid_with_artifacts"
   }
 }
 ```
@@ -119,7 +119,7 @@ Default output paths:
 
 | Level | Meaning |
 | --- | --- |
-| `runtime_proven` | A valid `SKILL_RUNTIME_PROOF.md` exists and at least one skill artifact is present. |
+| `proof_valid_with_artifacts` | A valid `SKILL_RUNTIME_PROOF.md` exists and at least one mapped skill artifact is present. This still does not prove turn-level invocation. |
 | `present` | Skill artifacts are present, but runtime proof is missing or invalid. |
 | `proof_only` | Runtime proof exists, but no mapped skill artifacts are present. |
 | `absent` | No runtime proof and no mapped skill artifacts. |
