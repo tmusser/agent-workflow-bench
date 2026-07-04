@@ -50,6 +50,17 @@ def test_allows_content_metadata_counts(tmp_path: Path):
     assert loaded[0]["fields"] == {"stdout_bytes": 120, "usage_input_tokens": 42}
 
 
+def test_context_window_helpers_are_local_estimates(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("TELEMETRY_CONTEXT_WINDOW_TOKENS", "1_000")
+
+    assert telemetry.context_window_config() == (1000, "TELEMETRY_CONTEXT_WINDOW_TOKENS")
+    assert telemetry.estimate_tokens_from_chars(3999) == 1000
+    assert telemetry.context_pressure_status(49.99) == "low"
+    assert telemetry.context_pressure_status(50.0) == "medium"
+    assert telemetry.context_pressure_status(75.0) == "high"
+    assert telemetry.context_pressure_status(90.0) == "critical"
+
+
 def test_collect_run_uses_existing_artifacts_without_copying_contents(tmp_path: Path):
     run_id = "vtest_01_A_r1"
     run_dir = tmp_path / "benchmark-data" / "runs" / run_id
@@ -103,16 +114,61 @@ def test_collect_run_uses_existing_artifacts_without_copying_contents(tmp_path: 
         "telemetry.collect_start",
         "llm_call.summary",
         "harness.provenance",
+        "context_window.status",
         "harness.outputs",
         "workflow.artifacts",
         "telemetry.collect_end",
     ]
     llm = next(event for event in events if event["event_type"] == "llm_call.summary")
     assert llm["fields"]["usage_input_tokens"] == 123
+    context = next(event for event in events if event["event_type"] == "context_window.status")
+    assert context["fields"]["estimator"] == "provider_usage_input_tokens"
+    assert context["fields"]["usage_input_tokens"] == 123
+    assert context["fields"]["status"] == "low"
     outputs = next(event for event in events if event["event_type"] == "harness.outputs")
     assert outputs["fields"]["files"][0]["path"].endswith("diff.patch")
     collect_end = next(event for event in events if event["event_type"] == "telemetry.collect_end")
     assert collect_end["fields"]["path"] == f"benchmark-data/runs/{run_id}/telemetry.jsonl"
+
+
+def test_collect_run_estimates_context_from_local_input_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    run_id = "vtest_context"
+    run_dir = tmp_path / "benchmark-data" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    monkeypatch.setenv("TELEMETRY_CONTEXT_WINDOW_TOKENS", "1000")
+
+    (run_dir / "run_metrics.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "task_slug": "01-support-sla-boundary",
+                "arm_slug": "A-baseline",
+                "label": "initial",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "prompt.md").write_text("local prompt body " * 240, encoding="utf-8")
+
+    out = telemetry.collect_run(root=tmp_path, run_id=run_id)
+    serialized = out.read_text(encoding="utf-8")
+    assert "local prompt body" not in serialized
+
+    context = next(event for event in telemetry.read_events(out) if event["event_type"] == "context_window.status")
+    fields = context["fields"]
+    assert fields["estimator"] == "local_chars_div_4"
+    assert fields["context_window_tokens"] == 1000
+    assert fields["context_window_source"] == "TELEMETRY_CONTEXT_WINDOW_TOKENS"
+    assert fields["estimated_input_tokens"] == 1080
+    assert fields["context_window_used_pct"] == 108.0
+    assert fields["remaining_context_window_tokens"] == 0
+    assert fields["status"] == "critical"
+    assert fields["is_estimate"] is True
+    assert fields["input_file_path"] == f"benchmark-data/runs/{run_id}/prompt.md"
 
 
 def test_collect_run_ignores_malformed_json_metadata(tmp_path: Path):
