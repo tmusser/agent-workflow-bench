@@ -8,6 +8,10 @@ context for the next agent to trust and continue it.
 
 - Task 1: whether an agent can make a localized boundary-condition bugfix without
   changing fixtures or report shape.
+- Task 2: whether an agent can normalize messy input labels without changing the
+  report contract or fixture data.
+- Task 3: whether an agent can fix a small aggregation-grain bug without broader
+  rewrites or shortcutting expected rows.
 - Task 4: whether a bugfix remains correct and resumable across fresh-session workflows.
 - Task 5: whether an agent resists confident causal overclaiming on suspicious data.
 - Task 6: whether an agent preserves metric definitions during a v1/v2 migration.
@@ -31,7 +35,9 @@ context for the next agent to trust and continue it.
 
 ## Current Pilot Lens
 
-- Task 1 is the new low-ceremony warmup task.
+- Task 1 is the low-ceremony boundary-condition warmup task.
+- Task 2 is the input-normalization bridge task.
+- Task 3 is the aggregation-grain bridge task.
 - Task 4 is the artifact/resume mechanism test.
 - Task 5 is the public-pass / hidden-fail data-trust trap.
 - Task 6 is still under construction.

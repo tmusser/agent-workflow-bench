@@ -19,8 +19,8 @@ For a compact summary, see [docs/overview.md](docs/overview.md).
 
 - A pilot harness for workflow-sensitive agent work.
 - A place to test whether an agent can leave durable verification evidence, not just a passing patch.
-- A benchmark with current tasks covering localized bugfixes, bugfix/resume behavior, data-trust traps,
-  activation-metric migration, and scope-pressure exports.
+- A benchmark with current tasks covering localized bugfixes, normalization bugs, aggregation-grain bugs,
+  bugfix/resume behavior, data-trust traps, activation-metric migration, and scope-pressure exports.
 
 ## 2. What This Is Not
 
@@ -37,6 +37,18 @@ For a compact summary, see [docs/overview.md](docs/overview.md).
 - The visible task fixes an inclusive/exclusive SLA deadline bug.
 - The benchmark checks whether the fix is localized, preserves the report shape, and avoids fixture edits or hardcoded fixture answers.
 - See [docs/task1.md](docs/task1.md).
+
+### Task 2: Campaign Channel Normalization
+
+- The visible task fixes messy acquisition-channel labels that split equivalent rows.
+- The benchmark checks whether the agent normalizes inputs without changing fixtures, report shape, or expected grouping behavior.
+- See [docs/task2.md](docs/task2.md).
+
+### Task 3: Product Refund Grain Regression
+
+- The visible task fixes a refund-rate report that counts refund events instead of refunded orders.
+- The benchmark checks whether the agent preserves the report path while correcting the aggregation grain.
+- See [docs/task3.md](docs/task3.md).
 
 ### Task 4: Impossible Churn Regression
 
@@ -57,8 +69,6 @@ For a compact summary, see [docs/overview.md](docs/overview.md).
 - A scoped dashboard export task under pressure to widen the implementation.
 - The benchmark checks whether the agent preserves existing JSON behavior, keeps CSV support narrow, and handles fresh-session continuation.
 - See [docs/task7.md](docs/task7.md).
-
-Tasks 2 and 3 are intentionally still open slots for smaller bridge tasks between the Task 1 warmup and the Task 4 resume-heavy bugfix.
 
 ## 4. Arms
 
@@ -94,7 +104,9 @@ This table reflects the current pilot, not a universal result set.
 
 | Task | Status | Evidence / reading |
 | --- | --- | --- |
-| Task 1 | newly added / unrun | Low-ceremony SLA boundary bugfix meant to fill the missing first rung. |
+| Task 1 | added / unrun | Low-ceremony SLA boundary bugfix meant to fill the first rung. |
+| Task 2 | newly added / unrun | Input-normalization bridge task: broader than a comparison fix, still narrow and local. |
+| Task 3 | newly added / unrun | Aggregation-grain bridge task: entity count vs event count without Task 4 resumability pressure. |
 | Task 4 | piloted | Functional fixes landed; skill-routed runs left durable `BUGS.md`, `VERIFY.md`, and `HANDOFF.md`-style context for audit/resume. |
 | Task 5 | piloted negative control | Public checks could pass while hidden denominator/leakage traps still failed; clearer audit trails helped inspection but did not guarantee correctness. |
 | Task 6 | under construction | Activation metric migration harness exists but should not be advertised as a completed pilot result yet. |
@@ -134,6 +146,8 @@ RUN_ID=v01pilot_01-sla-boundary_A_r1 \
 ```
 
 For Task 1 details and run examples, see [docs/task1.md](docs/task1.md).
+For Task 2 details and run examples, see [docs/task2.md](docs/task2.md).
+For Task 3 details and run examples, see [docs/task3.md](docs/task3.md).
 For Task 5 details and run examples, see [docs/task5.md](docs/task5.md).
 For Task 7 details and run examples, see [docs/task7.md](docs/task7.md).
 
@@ -153,11 +167,10 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 - The current task set is designed to surface workflow and verification behavior, not to rank all agents on all coding work.
 - Task 5 yellow rows are useful negative results, not broken scorecard rows.
 - Generated artifacts, bundles, and local caches should stay out of source control.
-- Task 1 has not been piloted yet; it is a harness/task addition, not a benchmark result.
+- Tasks 1-3 have not been piloted yet; they are harness/task additions, not benchmark results.
 
 ## 9. Roadmap
 
-- Add Tasks 2 and 3 as bridge tasks between the Task 1 warmup and Task 4 resumability benchmark.
 - Add more tasks that stress different workflow skills.
 - Keep public verification and assessment checks separate.
 - Continue publishing scorecards and bundles as generated artifacts, not source.
