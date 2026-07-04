@@ -23,6 +23,13 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _source_text(repo: Path) -> str:
+    source_path = repo / "src" / "acquisition" / "metrics.py"
+    if not source_path.exists():
+        return ""
+    return source_path.read_text(encoding="utf-8")
+
+
 def _purge_acquisition_modules() -> None:
     for name in list(sys.modules):
         if name == "acquisition" or name.startswith("acquisition."):
@@ -85,7 +92,8 @@ def _check_synthetic(add_channel_fields, summarize_channels) -> list[str]:
     expected_normalized = ["email", "email", "paid_search", "unknown", "unknown"]
     if normalized != expected_normalized:
         errors.append(f"synthetic normalized channels expected {expected_normalized}, got {normalized}")
-    report_counts = dict(zip(summarize_channels(leads)["channel"], summarize_channels(leads)["signups"], strict=False))
+    synthetic_report = summarize_channels(leads)
+    report_counts = dict(zip(synthetic_report["channel"], synthetic_report["signups"], strict=False))
     expected_counts = {"email": 2, "paid_search": 1, "unknown": 2}
     if report_counts != expected_counts:
         errors.append(f"synthetic report expected {expected_counts}, got {report_counts}")
@@ -95,8 +103,8 @@ def _check_synthetic(add_channel_fields, summarize_channels) -> list[str]:
 def evaluate(repo: Path) -> list[str]:
     repo = repo.resolve()
     errors = _check_fixture_hashes(repo)
-    source = (repo / "src" / "acquisition" / "metrics.py").read_text(encoding="utf-8")
-    if any(token in source for token in SHORTCUT_TOKENS):
+    source = _source_text(repo)
+    if source and any(token in source for token in SHORTCUT_TOKENS):
         errors.append("metrics.py appears to hardcode fixture-specific results")
     try:
         add_channel_fields, summarize_channels, weekly_channel_report = _load_modules(repo)
