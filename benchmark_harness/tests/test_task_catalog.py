@@ -5,6 +5,20 @@ from pathlib import Path
 from benchmark_harness.task_catalog import resolve_defaults, resolve_task_config
 
 
+def test_task1_defaults_are_cataloged():
+    defaults = resolve_defaults("01-support-sla-boundary", "E-ai-engineering-skills")
+
+    assert defaults["TASK_ID_DEFAULT"] == "01-sla-boundary"
+    assert defaults["TASK_NAME_DEFAULT"] == "Support SLA Boundary Regression"
+    assert defaults["STARTER_DEFAULT"] == "tasks/01-support-sla-boundary/starter_repo"
+    assert defaults["TASK_PROMPT_DEFAULT"] == "tasks/01-support-sla-boundary/starter_repo/TASK.md"
+    assert defaults["MANIFEST_DEFAULT"] == "tasks/01-support-sla-boundary/task_output_manifest.yml"
+    assert defaults["HIDDEN_EVALUATOR_MODULE_DEFAULT"] == "benchmark_harness.evaluators.task1_hidden_evaluator"
+    assert defaults["RUN_PREFIX_DEFAULT"] == "v01pilot_01-sla-boundary"
+    assert defaults["ARM_WRAPPER_DEFAULT"] == "arms/E-ai-engineering-skills.md"
+    assert defaults["EXPECTED_STARTER_VERIFY_FAILURE_DEFAULT"] == "true"
+
+
 def test_task4_defaults_keep_existing_wrapper():
     defaults = resolve_defaults("04-impossible-churn", "E-ai-engineering-skills")
 
