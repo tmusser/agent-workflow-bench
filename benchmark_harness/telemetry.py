@@ -179,7 +179,7 @@ def read_events(path: str | Path) -> list[dict[str, Any]]:
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except OSError:
+    except (OSError, json.JSONDecodeError):
         return {}
     return raw if isinstance(raw, dict) else {}
 
@@ -216,7 +216,7 @@ def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None)
         ("stripped_resume", root_path / "benchmark-data" / "resume-runs" / f"{run_id}_stripped", root_path / "benchmark-data" / "resume-workspaces" / run_id / "stripped" / "repo"),
     )
 
-    emit(telemetry_path, "telemetry.collect_start", run_id=run_id, fields={"root": root_path.as_posix()})
+    emit(telemetry_path, "telemetry.collect_start", run_id=run_id)
 
     for phase, out_dir, repo_dir in phases:
         metrics = _read_json(out_dir / "run_metrics.json")
@@ -267,7 +267,7 @@ def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None)
         if artifacts:
             emit(telemetry_path, "workflow.artifacts", run_id=run_id, phase=phase, fields={"files": artifacts})
 
-    emit(telemetry_path, "telemetry.collect_end", run_id=run_id, fields={"path": telemetry_path.as_posix()})
+    emit(telemetry_path, "telemetry.collect_end", run_id=run_id, fields={"path": _rel(telemetry_path, root_path)})
     return telemetry_path
 
 
