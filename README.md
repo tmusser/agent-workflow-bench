@@ -15,6 +15,7 @@ It is a narrower benchmark for whether workflow skills improve audit trails, ver
 
 For a compact summary, see [docs/overview.md](docs/overview.md).
 For deterministic artifact hygiene checks, see [docs/artifact-usability.md](docs/artifact-usability.md).
+For inferred skill evidence summaries, see [docs/skill-routing-summary.md](docs/skill-routing-summary.md).
 
 ## 1. What This Is
 
@@ -150,6 +151,12 @@ Summarize deterministic artifact hygiene for a run:
 
 ```bash
 python -m benchmark_harness.artifact_usability summarize-run --run-id "$RUN_ID" --phase initial
+```
+
+Summarize inferred skill evidence for a run:
+
+```bash
+python -m benchmark_harness.skill_routing_summary summarize-run --run-id "$RUN_ID" --phase initial
 ```
 
 For Task 1 details and run examples, see [docs/task1.md](docs/task1.md).
