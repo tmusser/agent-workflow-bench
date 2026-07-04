@@ -81,3 +81,12 @@ def test_hidden_evaluator_rejects_rate_clamping(tmp_path: Path):
     errors = hidden.evaluate(repo)
 
     assert "metrics.py appears to clamp refund rates instead of fixing the order grain" in errors
+
+
+def test_hidden_evaluator_reports_missing_source_without_crashing(tmp_path: Path):
+    repo = _starter_repo(tmp_path)
+    (repo / "src" / "commerce" / "metrics.py").unlink()
+
+    errors = hidden.evaluate(repo)
+
+    assert any("could not evaluate refund grain report" in error for error in errors)
