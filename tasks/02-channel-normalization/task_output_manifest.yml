@@ -1,0 +1,22 @@
+required_outputs: []
+
+workflow_artifact_patterns:
+  - SPEC.md
+  - PLAN.md
+  - TODO.md
+  - VERIFY.md
+  - HANDOFF.md
+  - BUGS.md
+  - SKILL_RUNTIME_PROOF.md
+  - NORMALIZATION_NOTES.md
+  - BUGFIX_NOTES.md
+  - BUGFIX_REVIEW.md
+  - SHIP.md
+  - docs/*handoff*.md
+  - docs/*verification*.md
+  - docs/*bug*.md
+  - docs/*BUG*.md
+
+strip_timing:
+  allowed_phase: before_resume_run_only
+  forbidden_after_resume_outputs: true
