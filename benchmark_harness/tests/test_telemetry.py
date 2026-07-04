@@ -145,6 +145,8 @@ def test_collect_run_accepts_codex_style_input_tokens(tmp_path: Path):
                 "arm_slug": "C-codex",
                 "label": "initial",
                 "provider": "codex",
+                "runner": "codex-cli",
+                "runner_cmd": "codex exec with inline prompt that must not be copied",
                 "model": "gpt-5.5-codex",
                 "agent_exit_code": 0,
                 "input_tokens": 900,
@@ -156,11 +158,15 @@ def test_collect_run_accepts_codex_style_input_tokens(tmp_path: Path):
     )
 
     out = telemetry.collect_run(root=tmp_path, run_id=run_id)
+    serialized = out.read_text(encoding="utf-8")
     events = telemetry.read_events(out)
 
     llm = next(event for event in events if event["event_type"] == "llm_call.summary")
     assert llm["arm_slug"] == "C-codex"
     assert llm["fields"]["provider"] == "codex"
+    assert llm["fields"]["runner"] == "codex-cli"
+    assert "runner_cmd" not in llm["fields"]
+    assert "inline prompt" not in serialized
     assert llm["fields"]["agent_exit_code"] == 0
     assert llm["fields"]["input_tokens"] == 900
     assert llm["fields"]["output_tokens"] == 100
@@ -212,6 +218,35 @@ def test_collect_run_estimates_context_from_local_input_file(
     assert fields["status"] == "critical"
     assert fields["is_estimate"] is True
     assert fields["input_file_path"] == f"benchmark-data/runs/{run_id}/prompt.md"
+
+
+def test_collect_run_sanitizes_absolute_provenance_paths(tmp_path: Path):
+    run_id = "vtest_paths"
+    run_dir = tmp_path / "benchmark-data" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    outside = tmp_path.parent / "secret-user" / "TASK.md"
+
+    (run_dir / "run_provenance.json").write_text(
+        json.dumps(
+            {
+                "task_slug": "01-support-sla-boundary",
+                "resolved_arm_slug": "A-baseline",
+                "task_prompt_path": str(tmp_path / "tasks" / "01" / "TASK.md"),
+                "resume_prompt_path": str(outside),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    out = telemetry.collect_run(root=tmp_path, run_id=run_id)
+    serialized = out.read_text(encoding="utf-8")
+
+    assert str(tmp_path) not in serialized
+    assert "secret-user" not in serialized
+    provenance = next(event for event in telemetry.read_events(out) if event["event_type"] == "harness.provenance")
+    assert provenance["fields"]["task_prompt_path"] == "tasks/01/TASK.md"
+    assert provenance["fields"]["resume_prompt_path"] == "[outside-root]/TASK.md"
 
 
 def test_collect_run_ignores_malformed_json_metadata(tmp_path: Path):
