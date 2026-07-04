@@ -86,6 +86,10 @@ Field names that look content-like, such as `prompt_body`, `stdout`, `stderr`,
 `completion`, `secret`, or `file_content`, are rejected. Content-size metadata,
 such as `stdout_bytes` or `usage_input_tokens`, is allowed.
 
+This guard is field-name based, not a data-loss-prevention scanner. Do not pass
+freeform prompt, completion, diff, verification, source, fixture, or secret values
+through manual `--field` arguments under neutral names like `note` or `summary`.
+
 ## Why This Exists
 
 The scorecard answers whether a run passed. Telemetry should help diagnose why.
