@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from benchmark_harness import telemetry
+
+
+def test_emit_writes_metadata_only_jsonl(tmp_path: Path):
+    out = tmp_path / "telemetry.jsonl"
+
+    event = telemetry.emit(
+        out,
+        "harness.stage",
+        run_id="run-1",
+        task_slug="01-support-sla-boundary",
+        arm_slug="A-baseline",
+        phase="initial",
+        fields={"exit_code": 0, "artifact_path": "VERIFY.md"},
+    )
+
+    assert event["schema_version"] == 1
+    loaded = telemetry.read_events(out)
+    assert loaded[0]["event_type"] == "harness.stage"
+    assert loaded[0]["fields"]["exit_code"] == 0
+    assert loaded[0]["fields"]["artifact_path"] == "VERIFY.md"
+
+
+def test_rejects_content_like_field_names(tmp_path: Path):
+    with pytest.raises(ValueError, match="content-like"):
+        telemetry.emit(
+            tmp_path / "telemetry.jsonl",
+            "unsafe",
+            fields={"prompt_body": "do not capture this"},
+        )
+
+
+def test_allows_content_metadata_counts(tmp_path: Path):
+    out = tmp_path / "telemetry.jsonl"
+
+    telemetry.emit(
+        out,
+        "llm_call.summary",
+        fields={"stdout_bytes": 120, "usage_input_tokens": 42},
+    )
+
+    loaded = telemetry.read_events(out)
+    assert loaded[0]["fields"] == {"stdout_bytes": 120, "usage_input_tokens": 42}
+
+
+def test_collect_run_uses_existing_artifacts_without_copying_contents(tmp_path: Path):
+    run_id = "vtest_01_A_r1"
+    run_dir = tmp_path / "benchmark-data" / "runs" / run_id
+    repo_dir = tmp_path / "benchmark-data" / "workspaces" / run_id / "repo"
+    run_dir.mkdir(parents=True)
+    repo_dir.mkdir(parents=True)
+
+    (run_dir / "run_metrics.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "task_slug": "01-support-sla-boundary",
+                "arm_slug": "A-baseline",
+                "label": "initial",
+                "model": "sonnet",
+                "usage_input_tokens": 123,
+                "usage_output_tokens": 45,
+                "stdout_bytes": 999,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "run_provenance.json").write_text(
+        json.dumps(
+            {
+                "task_slug": "01-support-sla-boundary",
+                "requested_arm_slug": "A-baseline",
+                "resolved_arm_slug": "A-baseline",
+                "task_prompt_sha256": "a" * 64,
+                "task_prompt_path": "tasks/01-support-sla-boundary/starter_repo/TASK.md",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "claude_stdout.txt").write_text("SECRET PROMPT OR COMPLETION BODY", encoding="utf-8")
+    (run_dir / "diff.patch").write_text("diff body that should not be copied", encoding="utf-8")
+    (repo_dir / "VERIFY.md").write_text("verification details that should not be copied", encoding="utf-8")
+
+    out = telemetry.collect_run(root=tmp_path, run_id=run_id)
+    text = out.read_text(encoding="utf-8")
+
+    assert "SECRET PROMPT" not in text
+    assert "diff body" not in text
+    assert "verification details" not in text
+
+    events = telemetry.read_events(out)
+    assert [event["event_type"] for event in events] == [
+        "telemetry.collect_start",
+        "llm_call.summary",
+        "harness.provenance",
+        "harness.outputs",
+        "workflow.artifacts",
+        "telemetry.collect_end",
+    ]
+    llm = next(event for event in events if event["event_type"] == "llm_call.summary")
+    assert llm["fields"]["usage_input_tokens"] == 123
+    outputs = next(event for event in events if event["event_type"] == "harness.outputs")
+    assert outputs["fields"]["files"][0]["path"].endswith("diff.patch")
+
+
+def test_is_enabled_accepts_common_truthy_values():
+    assert telemetry.is_enabled({"ENABLE_TELEMETRY": "1"}) is True
+    assert telemetry.is_enabled({"ENABLE_TELEMETRY": "true"}) is True
+    assert telemetry.is_enabled({"ENABLE_TELEMETRY": "0"}) is False
