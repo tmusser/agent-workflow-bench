@@ -96,6 +96,7 @@ def test_collect_run_uses_existing_artifacts_without_copying_contents(tmp_path: 
     assert "SECRET PROMPT" not in text
     assert "diff body" not in text
     assert "verification details" not in text
+    assert str(tmp_path) not in text
 
     events = telemetry.read_events(out)
     assert [event["event_type"] for event in events] == [
@@ -110,6 +111,22 @@ def test_collect_run_uses_existing_artifacts_without_copying_contents(tmp_path: 
     assert llm["fields"]["usage_input_tokens"] == 123
     outputs = next(event for event in events if event["event_type"] == "harness.outputs")
     assert outputs["fields"]["files"][0]["path"].endswith("diff.patch")
+    collect_end = next(event for event in events if event["event_type"] == "telemetry.collect_end")
+    assert collect_end["fields"]["path"] == f"benchmark-data/runs/{run_id}/telemetry.jsonl"
+
+
+def test_collect_run_ignores_malformed_json_metadata(tmp_path: Path):
+    run_id = "vtest_bad_json"
+    run_dir = tmp_path / "benchmark-data" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "run_metrics.json").write_text("{not valid json", encoding="utf-8")
+
+    out = telemetry.collect_run(root=tmp_path, run_id=run_id)
+
+    assert [event["event_type"] for event in telemetry.read_events(out)] == [
+        "telemetry.collect_start",
+        "telemetry.collect_end",
+    ]
 
 
 def test_is_enabled_accepts_common_truthy_values():
