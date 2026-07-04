@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -z "${RUN_ID:-}" ]]; then
-  echo "ERROR: RUN_ID is required so telemetry can be written to the correct run directory." >&2
+telemetry_flag="$(printf '%s' "${ENABLE_TELEMETRY:-0}" | tr '[:upper:]' '[:lower:]')"
+telemetry_enabled=false
+case "$telemetry_flag" in
+  1|true|yes|on)
+    telemetry_enabled=true
+    ;;
+esac
+
+if [[ "$telemetry_enabled" == true && -z "${RUN_ID:-}" ]]; then
+  echo "ERROR: RUN_ID is required when telemetry is enabled." >&2
   exit 2
 fi
 
@@ -11,7 +19,7 @@ set +e
 pilot_exit=$?
 set -e
 
-if [[ "${ENABLE_TELEMETRY:-0}" == "1" || "${ENABLE_TELEMETRY:-}" == "true" || "${ENABLE_TELEMETRY:-}" == "yes" || "${ENABLE_TELEMETRY:-}" == "on" ]]; then
+if [[ "$telemetry_enabled" == true ]]; then
   python -m benchmark_harness.telemetry emit \
     --path "benchmark-data/runs/${RUN_ID}/telemetry.jsonl" \
     --event-type "pilot_smoke.command" \
