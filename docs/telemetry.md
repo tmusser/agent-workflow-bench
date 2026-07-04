@@ -25,6 +25,7 @@ It may record:
 - run id, task slug, arm slug, phase, and command label;
 - model/effort/max-turn settings;
 - token counts and timing fields when already exposed by `run_metrics.json`;
+- local context-window pressure estimates from existing prompt files or usage metadata;
 - file paths and byte sizes for known outputs and workflow artifacts;
 - provenance hashes that the harness already records.
 
@@ -54,6 +55,34 @@ You can also collect telemetry after an existing run:
 python -m benchmark_harness.telemetry collect-run --run-id "$RUN_ID" --root .
 ```
 
+## Context Window Status
+
+Telemetry emits a `context_window.status` event without making an extra LLM call.
+
+The event prefers provider-reported `usage_input_tokens` when the Claude CLI
+already exposes it through `run_metrics.json`. When usage tokens are unavailable,
+it reads the local input prompt file only to count characters and estimates tokens
+with a simple `chars / 4` heuristic. It never writes the prompt body to telemetry.
+
+By default, the context window denominator is `200000` tokens. Override it for a
+run when you want a different local assumption:
+
+```bash
+TELEMETRY_CONTEXT_WINDOW_TOKENS=200000 ENABLE_TELEMETRY=1 ./tools/pilot_smoke_with_telemetry.sh auto-a-r1
+```
+
+The status buckets are:
+
+| Status | Used context estimate |
+| --- | --- |
+| `low` | `<50%` |
+| `medium` | `>=50%` and `<75%` |
+| `high` | `>=75%` and `<90%` |
+| `critical` | `>=90%` |
+| `unknown` | no usage tokens or local input file available |
+
+This is a local pressure gauge, not a model-contract guarantee.
+
 ## Event Types
 
 Current events include:
@@ -63,6 +92,7 @@ Current events include:
 | `pilot_smoke.command` | The wrapper command and exit code. |
 | `telemetry.collect_start` | Telemetry collection started. |
 | `llm_call.summary` | Metadata from `run_metrics.json`, including model, timing, turn, and token fields when available. |
+| `context_window.status` | Local context pressure estimate, based on existing usage metadata or prompt-file character counts. |
 | `harness.provenance` | Prompt/wrapper paths and hashes from `run_provenance.json`. |
 | `harness.outputs` | Known harness output files by path and byte size only. |
 | `workflow.artifacts` | Known workflow artifact files by path and byte size only. |
@@ -99,7 +129,7 @@ Useful Task 8 design questions this can support:
 - Did the model hit max turns before making the key compatibility fix?
 - Did E-arm runs produce workflow artifacts early enough to help continuation?
 - Did failing runs have weak provenance, missing artifacts, or large diffs?
-- Did hidden failures correlate with large stdout/stderr, high turn count, or missing verification artifacts?
+- Did hidden failures correlate with context pressure, large stdout/stderr, high turn count, or missing verification artifacts?
 
 Keep this layer boring. If a future telemetry field would be awkward to publish in
 an eval bundle, it probably does not belong here.
