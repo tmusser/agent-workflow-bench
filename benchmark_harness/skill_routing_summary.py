@@ -104,7 +104,7 @@ def infer_skills(repo: Path, skill_evidence: dict[str, tuple[str, ...]] = SKILL_
 def evidence_level(proof: SkillRuntimeProofSummary, inferred: dict[str, SkillEvidenceSummary]) -> str:
     inferred_count = sum(1 for item in inferred.values() if item.present)
     if proof.valid is True and inferred_count > 0:
-        return "runtime_proven"
+        return "proof_valid_with_artifacts"
     if inferred_count > 0:
         return "present"
     if proof.exists:
