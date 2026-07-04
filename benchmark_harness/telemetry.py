@@ -23,6 +23,8 @@ SENSITIVE_KEY_PARTS = (
 )
 SAFE_SUFFIXES = ("_bytes", "_lines", "_path", "_sha256", "_tokens")
 MAX_STRING_LENGTH = 300
+DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
+CONTEXT_WINDOW_ENV_KEYS = ("TELEMETRY_CONTEXT_WINDOW_TOKENS", "CONTEXT_WINDOW_TOKENS")
 
 LLM_METRIC_KEYS = (
     "label",
@@ -95,7 +97,8 @@ def _sensitive_key(key: str) -> bool:
     normalized = key.lower().replace("-", "_")
     if normalized.endswith(SAFE_SUFFIXES):
         return False
-    return any(part in normalized for part in SENSITIVE_KEY_PARTS)
+    tokens = set(normalized.split("_"))
+    return normalized in SENSITIVE_KEY_PARTS or any(part in tokens for part in SENSITIVE_KEY_PARTS)
 
 
 def _safe_scalar(value: Any) -> Any:
@@ -207,6 +210,121 @@ def _collect_files(root: Path, paths: Iterable[Path]) -> list[dict[str, Any]]:
     return sorted(files, key=lambda item: str(item["path"]))
 
 
+def _positive_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(str(value).replace("_", "").strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def context_window_config(env: Mapping[str, str] | None = None) -> tuple[int, str]:
+    values = os.environ if env is None else env
+    for key in CONTEXT_WINDOW_ENV_KEYS:
+        parsed = _positive_int(values.get(key))
+        if parsed is not None:
+            return parsed, key
+    return DEFAULT_CONTEXT_WINDOW_TOKENS, "default"
+
+
+def estimate_tokens_from_chars(char_count: int) -> int:
+    if char_count <= 0:
+        return 0
+    return max(1, (char_count + 3) // 4)
+
+
+def context_pressure_status(used_pct: float) -> str:
+    if used_pct >= 90:
+        return "critical"
+    if used_pct >= 75:
+        return "high"
+    if used_pct >= 50:
+        return "medium"
+    return "low"
+
+
+def _path_from_provenance(root: Path, value: Any) -> Path | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    return candidate
+
+
+def _input_file_for_phase(phase: str, out_dir: Path, provenance: Mapping[str, Any], root: Path) -> Path | None:
+    candidates: list[Path] = []
+    if phase == "initial":
+        candidates.append(out_dir / "prompt.md")
+        task_prompt = _path_from_provenance(root, provenance.get("task_prompt_path"))
+        if task_prompt is not None:
+            candidates.append(task_prompt)
+    else:
+        resume_prompt = _path_from_provenance(root, provenance.get("resume_prompt_path"))
+        if resume_prompt is not None:
+            candidates.append(resume_prompt)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _context_window_fields(
+    *,
+    phase: str,
+    out_dir: Path,
+    root: Path,
+    metrics: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+) -> dict[str, Any]:
+    window_tokens, window_source = context_window_config()
+    fields: dict[str, Any] = {
+        "context_window_tokens": window_tokens,
+        "context_window_source": window_source,
+    }
+
+    used_tokens = _positive_int(metrics.get("usage_input_tokens"))
+    if used_tokens is not None:
+        fields["estimator"] = "provider_usage_input_tokens"
+        fields["usage_input_tokens"] = used_tokens
+    else:
+        input_file = _input_file_for_phase(phase, out_dir, provenance, root)
+        if input_file is None:
+            fields["estimator"] = "unavailable"
+            fields["status"] = "unknown"
+            fields["reason"] = "no_usage_tokens_or_input_file"
+            return fields
+        try:
+            data = input_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            fields["estimator"] = "unavailable"
+            fields["status"] = "unknown"
+            fields["reason"] = "input_file_unreadable"
+            return fields
+
+        used_tokens = estimate_tokens_from_chars(len(data))
+        stat = input_file.stat()
+        fields.update(
+            {
+                "estimator": "local_chars_div_4",
+                "estimated_input_tokens": used_tokens,
+                "input_file_path": _rel(input_file, root),
+                "input_file_bytes": stat.st_size,
+                "input_file_chars": len(data),
+            }
+        )
+
+    used_pct = round((used_tokens / window_tokens) * 100, 2)
+    fields["context_window_used_pct"] = used_pct
+    fields["remaining_context_window_tokens"] = max(window_tokens - used_tokens, 0)
+    fields["status"] = context_pressure_status(used_pct)
+    fields["is_estimate"] = fields["estimator"] != "provider_usage_input_tokens"
+    return fields
+
+
 def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None) -> Path:
     root_path = Path(root).resolve()
     telemetry_path = Path(out) if out else root_path / "benchmark-data" / "runs" / run_id / "telemetry.jsonl"
@@ -243,6 +361,27 @@ def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None)
                 arm_slug=str(arm) if arm else None,
                 phase=phase,
                 fields=_whitelist(provenance, PROVENANCE_KEYS),
+            )
+
+        if metrics or provenance:
+            arm = metrics.get("arm_slug") or provenance.get("resolved_arm_slug") or provenance.get("requested_arm_slug")
+            task = metrics.get("task_slug") or provenance.get("task_slug")
+            label = metrics.get("label") or phase
+            emit(
+                telemetry_path,
+                "context_window.status",
+                run_id=str(metrics.get("run_id") or run_id),
+                task_slug=str(task) if task else None,
+                arm_slug=str(arm) if arm else None,
+                phase=phase,
+                label=str(label),
+                fields=_context_window_fields(
+                    phase=phase,
+                    out_dir=out_dir,
+                    root=root_path,
+                    metrics=metrics,
+                    provenance=provenance,
+                ),
             )
 
         outputs = _collect_files(
