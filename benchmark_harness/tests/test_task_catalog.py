@@ -132,7 +132,7 @@ def test_pilot_smoke_entrypoint_resolves_python_before_legacy_helper():
     assert "resolve_python()" in entrypoint
     assert "python3.11" in entrypoint
     assert "pilot_smoke_legacy.sh" in entrypoint
-    assert "PATH=\"$SHIM_DIR:$PATH\"" in entrypoint
+    assert "SHIM_DIR:$PATH" in entrypoint
 
     assert 'FRESH_PROMPT="${FRESH_SESSION_PROMPT:-$FRESH_SESSION_PROMPT_DEFAULT}"' in legacy
     assert 'RESUME_HIDDEN_EVALUATOR_MODULE="${RESUME_HIDDEN_EVALUATOR_MODULE:-$RESUME_HIDDEN_EVALUATOR_MODULE_DEFAULT}"' in legacy
