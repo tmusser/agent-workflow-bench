@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Iterable
 
+from benchmark_harness.semantic_terminal_state import classify_semantic_terminal_state
 from benchmark_harness.validate_skill_runtime_proof import validate as validate_skill_runtime_proof
 
 WORKFLOW_ARTIFACT_NAMES = [
@@ -41,6 +42,8 @@ ROW_FIELDS = [
     "initial_verify_exit",
     "initial_hidden_exit",
     "initial_green",
+    "initial_terminal_reason",
+    "initial_semantic_terminal_state",
     "failure_stage",
     "failure_reason",
     "initial_diff_bytes",
@@ -54,9 +57,13 @@ ROW_FIELDS = [
     "full_resume_verify_exit",
     "full_resume_hidden_exit",
     "full_resume_green",
+    "full_resume_terminal_reason",
+    "full_resume_semantic_terminal_state",
     "stripped_resume_verify_exit",
     "stripped_resume_hidden_exit",
     "stripped_resume_green",
+    "stripped_resume_terminal_reason",
+    "stripped_resume_semantic_terminal_state",
     "full_added_regression_test",
     "stripped_added_regression_test",
     "agent_side_verification_claim",
@@ -439,6 +446,62 @@ def _agent_side_verification_claim(extracted_root: Path, run_id: str, *, initial
     return "unknown"
 
 
+def _run_terminal_reason(run_dir: Path) -> str | None:
+    data = _read_json(run_dir / "run_metrics.json")
+    if not data:
+        return None
+    terminal_reason = data.get("terminal_reason")
+    return terminal_reason if isinstance(terminal_reason, str) else None
+
+
+def _stage_text(run_dir: Path) -> str:
+    candidate_names = [
+        "claude_stdout.txt",
+        "claude_stderr.txt",
+        "verification_final.txt",
+        "hidden_evaluator_final.txt",
+        "verification.txt",
+        "hidden_evaluator.txt",
+        "INITIAL_NOT_READY.txt",
+        "FRESH_SESSION_REVIEW.md",
+        "BUGFIX_REVIEW.md",
+        "HANDOFF.md",
+        "VERIFY.md",
+    ]
+    texts = []
+    for name in candidate_names:
+        text = _read_text(run_dir / name)
+        if text is not None:
+            texts.append(text)
+    return "\n".join(texts)
+
+
+def _file_size(path: Path) -> int:
+    try:
+        return len(path.read_bytes()) if path.exists() and path.is_file() else 0
+    except OSError:
+        return 0
+
+
+def _semantic_stage_state(
+    *,
+    run_dir: Path,
+    verify_exit: int | str | None,
+    hidden_exit: int | str | None,
+    diff_bytes: int,
+    is_run: bool = True,
+) -> str:
+    if not is_run:
+        return "not_run"
+    return classify_semantic_terminal_state(
+        terminal_reason=_run_terminal_reason(run_dir),
+        verify_exit=verify_exit,
+        hidden_exit=hidden_exit,
+        diff_bytes=diff_bytes,
+        text=_stage_text(run_dir),
+    )
+
+
 def score_bundle(bundle_path: Path | str) -> dict[str, object]:
     bundle_path = Path(bundle_path)
     with tempfile.TemporaryDirectory(prefix="benchmark-scorecard-") as tmpdir:
@@ -487,7 +550,16 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
 
         initial_diff_patch = initial_run / "diff.patch"
         initial_diff_stat = initial_run / "diff_stat.txt"
-        initial_diff_bytes = len(initial_diff_patch.read_bytes()) if initial_diff_patch.exists() else 0
+        initial_diff_bytes = _file_size(initial_diff_patch)
+
+        full_resume_diff_bytes = _file_size(full_resume_run / "diff.patch")
+        stripped_resume_diff_bytes = _file_size(stripped_resume_run / "diff.patch")
+        full_resume_run_present = bundle_type != INITIAL_FAIL_BUNDLE_KIND and full_resume_run.exists()
+        stripped_resume_run_present = bundle_type != INITIAL_FAIL_BUNDLE_KIND and stripped_resume_run.exists()
+
+        initial_green = initial_verify_exit == 0 and initial_hidden_exit == 0
+        full_resume_green = full_resume_verify_exit == 0 and full_resume_hidden_exit == 0
+        stripped_resume_green = stripped_resume_verify_exit == 0 and stripped_resume_hidden_exit == 0
 
         row = {
             "bundle": str(bundle_path),
@@ -497,7 +569,14 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
             "initial_ready": initial_ready,
             "initial_verify_exit": initial_verify_exit,
             "initial_hidden_exit": initial_hidden_exit,
-            "initial_green": initial_verify_exit == 0 and initial_hidden_exit == 0,
+            "initial_green": initial_green,
+            "initial_terminal_reason": _run_terminal_reason(initial_run),
+            "initial_semantic_terminal_state": _semantic_stage_state(
+                run_dir=initial_run,
+                verify_exit=initial_verify_exit,
+                hidden_exit=initial_hidden_exit,
+                diff_bytes=initial_diff_bytes,
+            ),
             "failure_stage": None if initial_ready else "initial",
             "failure_reason": _failure_reason_from_initial_run(initial_run) if not initial_ready else None,
             "initial_diff_bytes": initial_diff_bytes,
@@ -510,10 +589,26 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
             "artifact_mechanism_active": artifact_mechanism_active,
             "full_resume_verify_exit": full_resume_verify_exit,
             "full_resume_hidden_exit": full_resume_hidden_exit,
-            "full_resume_green": full_resume_verify_exit == 0 and full_resume_hidden_exit == 0,
+            "full_resume_green": full_resume_green,
+            "full_resume_terminal_reason": _run_terminal_reason(full_resume_run) if full_resume_run_present else None,
+            "full_resume_semantic_terminal_state": _semantic_stage_state(
+                run_dir=full_resume_run,
+                verify_exit=full_resume_verify_exit,
+                hidden_exit=full_resume_hidden_exit,
+                diff_bytes=full_resume_diff_bytes,
+                is_run=full_resume_run_present,
+            ),
             "stripped_resume_verify_exit": stripped_resume_verify_exit,
             "stripped_resume_hidden_exit": stripped_resume_hidden_exit,
-            "stripped_resume_green": stripped_resume_verify_exit == 0 and stripped_resume_hidden_exit == 0,
+            "stripped_resume_green": stripped_resume_green,
+            "stripped_resume_terminal_reason": _run_terminal_reason(stripped_resume_run) if stripped_resume_run_present else None,
+            "stripped_resume_semantic_terminal_state": _semantic_stage_state(
+                run_dir=stripped_resume_run,
+                verify_exit=stripped_resume_verify_exit,
+                hidden_exit=stripped_resume_hidden_exit,
+                diff_bytes=stripped_resume_diff_bytes,
+                is_run=stripped_resume_run_present,
+            ),
             "full_added_regression_test": _detect_added_regression_test(full_resume_run / "diff.patch"),
             "stripped_added_regression_test": _detect_added_regression_test(stripped_resume_run / "diff.patch"),
             "agent_side_verification_claim": _agent_side_verification_claim(
@@ -574,7 +669,7 @@ def write_json(rows: list[dict[str, object]], out_path: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Create a scorecard from one or more Task 4/5 bundles.")
+    parser = argparse.ArgumentParser(description="Create a scorecard from one or more benchmark bundles.")
     parser.add_argument("bundles", nargs="+", help="One or more *-eval-bundle.tar.gz or *-initial-fail-bundle.tar.gz files")
     parser.add_argument("--out", dest="csv_out", default=None, help="Write a CSV scorecard to this path")
     parser.add_argument("--json-out", dest="json_out", default=None, help="Write a JSON scorecard to this path")
