@@ -136,27 +136,27 @@ def _explicit_solution_latency(run_dir: Path, actual_turns: int | None) -> dict[
     if not data:
         return None
 
-    first_green_turn = _coerce_int(data.get("first_green_turn"))
-    if first_green_turn is None:
-        return None
-
     explicit_actual_turns = _coerce_int(data.get("actual_turns"))
     actual_turns = explicit_actual_turns if explicit_actual_turns is not None else actual_turns
 
+    first_green_turn = _coerce_int(data.get("first_green_turn"))
+    observable = bool(data.get("solution_latency_observable")) or first_green_turn is not None
+
     turns_after_first_green = _coerce_int(data.get("turns_after_first_green"))
-    if turns_after_first_green is None and actual_turns is not None:
+    if observable and turns_after_first_green is None and first_green_turn is not None and actual_turns is not None:
         turns_after_first_green = max(actual_turns - first_green_turn, 0)
 
     permission_denials_after_first_green = _coerce_int(data.get("permission_denials_after_first_green"))
+    note = str(data.get("note") or ("observed_from_solution_latency_summary" if observable else LATENCY_NOT_OBSERVABLE))
 
     return {
-        "solution_latency_observable": True,
+        "solution_latency_observable": observable,
         "actual_turns": actual_turns,
         "first_green_turn": first_green_turn,
         "turns_after_first_green": turns_after_first_green,
         "permission_denials_after_first_green": permission_denials_after_first_green,
         "solution_latency_source": "solution_latency.json",
-        "solution_latency_note": str(data.get("note") or "observed_from_solution_latency_summary"),
+        "solution_latency_note": note,
     }
 
 

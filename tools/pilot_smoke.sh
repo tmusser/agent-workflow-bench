@@ -89,6 +89,12 @@ set -e
 # Best-effort post-processing: Claude JSON output may include structured
 # permission_denials. Keep only metadata counts in run_metrics.json.
 python -m benchmark_harness.permission_denials annotate --root "$ROOT_DIR" >/dev/null 2>&1 || true
+# Best-effort post-processing: collected phases can now carry explicit
+# solution_latency.json summaries. Current runs remain first-green-unobservable
+# unless future per-turn traces are present.
+if [[ -n "${RUN_ID:-}" ]]; then
+  python -m benchmark_harness.emit_solution_latency annotate --root "$ROOT_DIR" --run-id "$RUN_ID" >/dev/null 2>&1 || true
+fi
 # The legacy helper builds eval bundles before this wrapper post-processes
 # metrics, so refresh the current bundle when RUN_ID is explicit.
 rebuild_current_eval_bundle || true

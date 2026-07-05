@@ -50,6 +50,33 @@ def test_solution_latency_reads_explicit_summary(tmp_path: Path):
     assert result["solution_latency_note"] == "computed_by_harness"
 
 
+def test_solution_latency_reads_emitted_final_only_summary(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    write(run_dir / "run_metrics.json", json.dumps({"actual_turns": 21}) + "\n")
+    write(
+        run_dir / "solution_latency.json",
+        json.dumps(
+            {
+                "actual_turns": 21,
+                "final_green": True,
+                "first_green_turn": None,
+                "solution_latency_observable": False,
+                "note": "final_only_no_per_turn_trace",
+            }
+        )
+        + "\n",
+    )
+
+    result = summarize_solution_latency(run_dir, verify_exit=0, hidden_exit=0)
+
+    assert result["solution_latency_observable"] is False
+    assert result["actual_turns"] == 21
+    assert result["first_green_turn"] is None
+    assert result["turns_after_first_green"] is None
+    assert result["solution_latency_source"] == "solution_latency.json"
+    assert result["solution_latency_note"] == "final_only_no_per_turn_trace"
+
+
 def test_solution_latency_reads_jsonl_turn_events(tmp_path: Path):
     run_dir = tmp_path / "run"
     write(run_dir / "run_metrics.json", json.dumps({"actual_turns": 10}) + "\n")
