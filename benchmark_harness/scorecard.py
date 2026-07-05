@@ -50,6 +50,25 @@ SOLUTION_LATENCY_FIELDS = [
     "solution_latency_note",
 ]
 
+FINALIZER_FIELDS = [
+    "enabled",
+    "ran",
+    "valid",
+    "trigger_reason",
+    "actual_turns",
+    "wall_seconds",
+    "total_cost_usd",
+    "validator_exit",
+    "verify_after_exit",
+    "hidden_after_exit",
+    "functional_files_changed",
+    "forbidden_files_changed",
+    "allowed_files_changed",
+    "bench_ready_after_finalizer",
+    "bench_ready_via_finalizer",
+    "created_skill_runtime_proof",
+]
+
 ROW_FIELDS = [
     "bundle",
     "run_id",
@@ -70,6 +89,22 @@ ROW_FIELDS = [
     "initial_solution_latency_observable",
     "initial_solution_latency_source",
     "initial_solution_latency_note",
+    "initial_finalizer_enabled",
+    "initial_finalizer_ran",
+    "initial_finalizer_valid",
+    "initial_finalizer_trigger_reason",
+    "initial_finalizer_actual_turns",
+    "initial_finalizer_wall_seconds",
+    "initial_finalizer_total_cost_usd",
+    "initial_finalizer_validator_exit",
+    "initial_finalizer_verify_after_exit",
+    "initial_finalizer_hidden_after_exit",
+    "initial_finalizer_functional_files_changed",
+    "initial_finalizer_forbidden_files_changed",
+    "initial_finalizer_allowed_files_changed",
+    "initial_finalizer_bench_ready_after_finalizer",
+    "initial_finalizer_bench_ready_via_finalizer",
+    "initial_finalizer_created_skill_runtime_proof",
     "failure_stage",
     "failure_reason",
     "initial_diff_bytes",
@@ -92,6 +127,22 @@ ROW_FIELDS = [
     "full_resume_solution_latency_observable",
     "full_resume_solution_latency_source",
     "full_resume_solution_latency_note",
+    "full_resume_finalizer_enabled",
+    "full_resume_finalizer_ran",
+    "full_resume_finalizer_valid",
+    "full_resume_finalizer_trigger_reason",
+    "full_resume_finalizer_actual_turns",
+    "full_resume_finalizer_wall_seconds",
+    "full_resume_finalizer_total_cost_usd",
+    "full_resume_finalizer_validator_exit",
+    "full_resume_finalizer_verify_after_exit",
+    "full_resume_finalizer_hidden_after_exit",
+    "full_resume_finalizer_functional_files_changed",
+    "full_resume_finalizer_forbidden_files_changed",
+    "full_resume_finalizer_allowed_files_changed",
+    "full_resume_finalizer_bench_ready_after_finalizer",
+    "full_resume_finalizer_bench_ready_via_finalizer",
+    "full_resume_finalizer_created_skill_runtime_proof",
     "stripped_resume_verify_exit",
     "stripped_resume_hidden_exit",
     "stripped_resume_green",
@@ -104,9 +155,28 @@ ROW_FIELDS = [
     "stripped_resume_solution_latency_observable",
     "stripped_resume_solution_latency_source",
     "stripped_resume_solution_latency_note",
+    "stripped_resume_finalizer_enabled",
+    "stripped_resume_finalizer_ran",
+    "stripped_resume_finalizer_valid",
+    "stripped_resume_finalizer_trigger_reason",
+    "stripped_resume_finalizer_actual_turns",
+    "stripped_resume_finalizer_wall_seconds",
+    "stripped_resume_finalizer_total_cost_usd",
+    "stripped_resume_finalizer_validator_exit",
+    "stripped_resume_finalizer_verify_after_exit",
+    "stripped_resume_finalizer_hidden_after_exit",
+    "stripped_resume_finalizer_functional_files_changed",
+    "stripped_resume_finalizer_forbidden_files_changed",
+    "stripped_resume_finalizer_allowed_files_changed",
+    "stripped_resume_finalizer_bench_ready_after_finalizer",
+    "stripped_resume_finalizer_bench_ready_via_finalizer",
+    "stripped_resume_finalizer_created_skill_runtime_proof",
     "full_added_regression_test",
     "stripped_added_regression_test",
     "agent_side_verification_claim",
+    "finalizer_total_turns",
+    "finalizer_total_wall_seconds",
+    "finalizer_total_cost_usd",
 ]
 
 BUNDLE_NAME_RE = re.compile(r"^(?P<run_id>.+?)-(?P<bundle_kind>eval|initial-fail)-bundle(?:\.tar)?\.gz$")
@@ -544,6 +614,52 @@ def _prefixed_latency(prefix: str, latency: dict[str, object]) -> dict[str, obje
     return {f"{prefix}_{field}": latency.get(field) for field in SOLUTION_LATENCY_FIELDS}
 
 
+FINALIZER_FIELD_MAP = {
+    "enabled": "enabled",
+    "ran": "ran",
+    "valid": "valid",
+    "trigger_reason": "trigger_reason",
+    "actual_turns": "actual_turns",
+    "wall_clock_seconds": "wall_seconds",
+    "total_cost_usd": "total_cost_usd",
+    "validator_exit": "validator_exit",
+    "verify_after_exit": "verify_after_exit",
+    "hidden_after_exit": "hidden_after_exit",
+    "functional_files_changed": "functional_files_changed",
+    "forbidden_files_changed": "forbidden_files_changed",
+    "allowed_files_changed": "allowed_files_changed",
+    "bench_ready_after_finalizer": "bench_ready_after_finalizer",
+    "bench_ready_via_finalizer": "bench_ready_via_finalizer",
+    "created_skill_runtime_proof": "created_skill_runtime_proof",
+}
+
+
+def _finalizer_summary(run_dir: Path) -> dict[str, object]:
+    summary = _read_json(run_dir / "finalizer" / "summary.json") or {}
+    return {
+        "enabled": bool(summary.get("finalizer_enabled", summary.get("enabled", False))),
+        "ran": bool(summary.get("finalizer_ran", summary.get("ran", False))),
+        "valid": bool(summary.get("finalizer_valid", summary.get("valid", False))),
+        "trigger_reason": summary.get("trigger_reason", summary.get("skipped_reason")),
+        "actual_turns": summary.get("actual_turns"),
+        "wall_clock_seconds": summary.get("wall_clock_seconds", summary.get("wall_seconds")),
+        "total_cost_usd": summary.get("total_cost_usd"),
+        "validator_exit": summary.get("validator_exit", summary.get("skill_runtime_proof_validator_exit")),
+        "verify_after_exit": summary.get("verify_after_exit"),
+        "hidden_after_exit": summary.get("hidden_after_exit"),
+        "functional_files_changed": bool(summary.get("functional_files_changed", False)),
+        "forbidden_files_changed": summary.get("forbidden_files_changed", []),
+        "allowed_files_changed": summary.get("allowed_files_changed", []),
+        "bench_ready_after_finalizer": bool(summary.get("bench_ready_after_finalizer", False)),
+        "bench_ready_via_finalizer": bool(summary.get("bench_ready_via_finalizer", False)),
+        "created_skill_runtime_proof": bool(summary.get("created_skill_runtime_proof", False)),
+    }
+
+
+def _prefixed_finalizer(prefix: str, finalizer_summary: dict[str, object]) -> dict[str, object]:
+    return {f"{prefix}_finalizer_{field_name}": finalizer_summary.get(summary_key) for summary_key, field_name in FINALIZER_FIELD_MAP.items()}
+
+
 def score_bundle(bundle_path: Path | str) -> dict[str, object]:
     bundle_path = Path(bundle_path)
     with tempfile.TemporaryDirectory(prefix="benchmark-scorecard-") as tmpdir:
@@ -612,6 +728,17 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
             verify_exit=stripped_resume_verify_exit,
             hidden_exit=stripped_resume_hidden_exit,
         )
+        initial_finalizer = _finalizer_summary(initial_run)
+        full_resume_finalizer = _finalizer_summary(full_resume_run)
+        stripped_resume_finalizer = _finalizer_summary(stripped_resume_run)
+        finalizer_summaries = [
+            summary
+            for summary in (initial_finalizer, full_resume_finalizer, stripped_resume_finalizer)
+            if summary.get("ran")
+        ]
+        finalizer_total_turns = sum(int(summary.get("actual_turns") or 0) for summary in finalizer_summaries)
+        finalizer_total_wall_seconds = sum(float(summary.get("wall_clock_seconds") or 0.0) for summary in finalizer_summaries)
+        finalizer_total_cost_usd = sum(float(summary.get("total_cost_usd") or 0.0) for summary in finalizer_summaries)
 
         row = {
             "bundle": str(bundle_path),
@@ -632,6 +759,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 diff_bytes=initial_diff_bytes,
             ),
             **_prefixed_latency("initial", initial_latency),
+            **_prefixed_finalizer("initial", initial_finalizer),
             "failure_stage": None if initial_ready else "initial",
             "failure_reason": _failure_reason_from_initial_run(initial_run) if not initial_ready else None,
             "initial_diff_bytes": initial_diff_bytes,
@@ -654,6 +782,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 is_run=full_resume_run_present,
             ),
             **_prefixed_latency("full_resume", full_resume_latency),
+            **_prefixed_finalizer("full_resume", full_resume_finalizer),
             "stripped_resume_verify_exit": stripped_resume_verify_exit,
             "stripped_resume_hidden_exit": stripped_resume_hidden_exit,
             "stripped_resume_green": stripped_resume_green,
@@ -666,6 +795,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 is_run=stripped_resume_run_present,
             ),
             **_prefixed_latency("stripped_resume", stripped_resume_latency),
+            **_prefixed_finalizer("stripped_resume", stripped_resume_finalizer),
             "full_added_regression_test": _detect_added_regression_test(full_resume_run / "diff.patch"),
             "stripped_added_regression_test": _detect_added_regression_test(stripped_resume_run / "diff.patch"),
             "agent_side_verification_claim": _agent_side_verification_claim(
@@ -673,6 +803,9 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 run_id,
                 initial_ready=initial_ready,
             ),
+            "finalizer_total_turns": finalizer_total_turns,
+            "finalizer_total_wall_seconds": finalizer_total_wall_seconds,
+            "finalizer_total_cost_usd": finalizer_total_cost_usd,
         }
         return row
 

@@ -11,6 +11,14 @@ the Claude print-mode helper can observe the run via `stream-json`; otherwise
 it falls back to a conservative `mtime_polling` trace. Older bundles may still
 have only final-state evidence, and those remain unobservable.
 
+`mtime_polling` is best-effort. It only sees tracked-file timestamp changes, so
+short runs or edits that touch only untracked files can be missed. When that
+happens, keep `solution_latency_observable` false and do not infer first-green
+post-hoc.
+
+For separately measured E-arm audit cost and proof-attribution guidance, see
+[docs/finalizer-attribution.md](docs/finalizer-attribution.md).
+
 ## Scorecard Fields
 
 For each phase, the scorecard includes:
