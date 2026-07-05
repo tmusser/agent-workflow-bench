@@ -99,3 +99,15 @@ def test_pressure_slice_summary_handles_missing_actual_usage():
     assert "15.25" in table
     assert "?" in table
     assert "medium" in table
+
+
+def test_pressure_slice_summary_task_filter_excludes_missing_task_slug():
+    rows = [
+        {"task_slug": None, "arm_slug": "A-baseline", "pressure_level": "none"},
+        {"task_slug": "04-impossible-churn", "arm_slug": "A-baseline", "pressure_level": "medium"},
+    ]
+
+    table = render_pressure_slice_table(rows, task_slug="04-impossible-churn")
+
+    assert "medium" in table
+    assert "none" not in table
