@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from benchmark_harness import context_pressure
 
 
@@ -25,3 +27,13 @@ def test_none_pressure_produces_no_background():
     assert payload["background_text"] == ""
     assert payload["pressure_tokens_estimated"] == 0
     assert payload["estimated_context_utilization"] == 0.0
+
+
+def test_manual_pressure_target_pct_is_capped():
+    with pytest.raises(ValueError, match="pressure_target_pct must be <="):
+        context_pressure.build_context_pressure(
+            level="high",
+            seed=0,
+            context_window_tokens=20_000,
+            pressure_target_pct=1.2,
+        )
