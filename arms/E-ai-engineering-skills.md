@@ -2,8 +2,15 @@ Benchmark arm: E — ai-engineering-skills.
 
 Use the ai-engineering-skills plugin, not just wrapper prose.
 
-For this bugfix, explicitly invoke the native plugin skills by name:
-- /ai-engineering-skills:diagnose-loop
+Use the smallest native workflow that fits the task. Keep artifacts concise. For tiny bugfix tasks, prioritize the code fix before long artifacts.
+
+A good default route for small bugfix tasks is:
+
+bug-capture -> build-one -> verify-contract
+
+Use additional skills only when they fit the task. Do not force a broad diagnostic loop for a one-line bug.
+
+Useful namespaced skills include:
 - /ai-engineering-skills:bug-capture
 - /ai-engineering-skills:scope-freeze
 - /ai-engineering-skills:build-one
@@ -11,35 +18,57 @@ For this bugfix, explicitly invoke the native plugin skills by name:
 - /ai-engineering-skills:verify-contract
 - /ai-engineering-skills:handoff
 
-Before finishing, create `SKILL_RUNTIME_PROOF.md` at the repo root using the strict
-runtime-proof structure expected by:
+Required work order:
+1. Read TASK.md before editing.
+2. Make the smallest correct code change.
+3. Create concise verification notes in VERIFY.md.
+4. Create SKILL_RUNTIME_PROOF.md using the exact structure below.
+5. Stop once TASK.md is complete and evidence is recorded.
 
-```bash
+Read .benchmark/SKILL_RUNTIME_CONTEXT.md before creating SKILL_RUNTIME_PROOF.md. Copy concrete values from that file. If it is missing, report the blocker instead of fabricating proof.
+
+SKILL_RUNTIME_PROOF.md must use this exact structure and fill every field with concrete, non-placeholder values:
+
+# Skill Runtime Proof
+
+## Run
+- Run ID: copy Run ID from .benchmark/SKILL_RUNTIME_CONTEXT.md
+- Arm: copy Arm slug from .benchmark/SKILL_RUNTIME_CONTEXT.md
+- Task: copy Task slug from .benchmark/SKILL_RUNTIME_CONTEXT.md
+- Repeat: r1
+
+## Skill source
+- Repo URL: copy Repo URL from .benchmark/SKILL_RUNTIME_CONTEXT.md
+- Pinned commit SHA: copy the exact 40-character lowercase SHA from .benchmark/SKILL_RUNTIME_CONTEXT.md
+- Local path: copy Local plugin path from .benchmark/SKILL_RUNTIME_CONTEXT.md
+- Install command: ./benchmark_harness/scripts/pin_skill_repos.sh local_plugins
+- Install stdout/stderr path: benchmark-data/skill-repos/pinned_skill_repos.csv
+
+## Activation
+- Agent CLI: Claude Code
+- Activation mechanism: namespaced skill invocation from pinned local plugin
+- Prompt wrapper path: arms/E-ai-engineering-skills.md
+- Agent-visible skill files: list the actual namespaced skills used
+- Environment variables relevant to skill loading: CLAUDE_PLUGIN_DIR
+
+## Pre-run availability check
+- Command run: test -f .benchmark/SKILL_RUNTIME_CONTEXT.md
+- Result: available
+- Evidence path: .benchmark/SKILL_RUNTIME_CONTEXT.md
+
+## During-run evidence
+- Did the agent mention or invoke the skill? yes/no/unclear: yes
+- Evidence: list the namespaced skills or concise workflow used
+- Notes: if shell verification is unavailable, say so; external harness verification is authoritative
+
+## Post-run caveat
+- Could a bad result be due to the skill not being loaded? yes/no/unclear: no
+- Reviewer notes: pinned skill context was present and copied into this proof
+
+Do not leave placeholder values such as TBD, unknown, or blank fields in the final proof.
+
+Run the proof validator before finishing if possible:
+
 python -m benchmark_harness.validate_skill_runtime_proof SKILL_RUNTIME_PROOF.md
-```
 
-Fill every field with concrete values. Do not leave placeholder values such as
-`TO_BE_FILLED`, `TBD`, `unknown`, or blank fields.
-
-Use the pinned skill repo information available in the run environment or local plugin
-setup. List the actual namespaced skills you used, such as
-`/ai-engineering-skills:diagnose-loop`, `/ai-engineering-skills:bug-capture`,
-`/ai-engineering-skills:scope-freeze`, `/ai-engineering-skills:build-one`,
-`/ai-engineering-skills:test-mini`, `/ai-engineering-skills:verify-contract`, and
-`/ai-engineering-skills:handoff`.
-
-Use real values, not prose:
-- `Pinned commit SHA`: `9a1bee15e58f3376dc7e7fa1f9a37f7d3eb0cda6` (copy this exact
-  40-character hash only; do not add any prose).
-- `Local path`: use the actual plugin checkout path that was loaded for the run.
-- `Install command`: record the command that created the local plugin checkout, such as
-  `./benchmark_harness/scripts/pin_skill_repos.sh local_plugins`.
-- `Pre-run availability check`:
-  - `Command run`: the exact local command you used to confirm the plugin checkout and
-    skill visibility.
-  - `Result`: use a single success word like `available` or `pass`.
-  - `Evidence path`: point to the command output or log file.
-
-Run the proof validator before finishing if possible.
-
-Use the smallest native workflow that fits the task. Keep artifacts concise. Complete TASK.md.
+Complete TASK.md.
