@@ -84,7 +84,7 @@ def _sort_key(row: dict[str, Any]) -> tuple[int, str, int, str]:
 def select_rows(rows: Iterable[dict[str, Any]], task_slug: str | None = None) -> list[dict[str, Any]]:
     selected = []
     for row in rows:
-        if task_slug is not None and row.get("task_slug") not in {task_slug, None}:
+        if task_slug is not None and row.get("task_slug") != task_slug:
             continue
         selected.append(row)
     return sorted(selected, key=_sort_key)
