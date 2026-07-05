@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Iterable
 
 from benchmark_harness.semantic_terminal_state import classify_semantic_terminal_state
+from benchmark_harness.solution_latency import summarize_solution_latency
 from benchmark_harness.validate_skill_runtime_proof import validate as validate_skill_runtime_proof
 
 WORKFLOW_ARTIFACT_NAMES = [
@@ -33,6 +34,16 @@ MECHANISM_ARTIFACT_NAMES = {
     "SKILL_RUNTIME_PROOF.md",
 }
 
+SOLUTION_LATENCY_FIELDS = [
+    "actual_turns",
+    "first_green_turn",
+    "turns_after_first_green",
+    "permission_denials_after_first_green",
+    "solution_latency_observable",
+    "solution_latency_source",
+    "solution_latency_note",
+]
+
 ROW_FIELDS = [
     "bundle",
     "run_id",
@@ -44,6 +55,13 @@ ROW_FIELDS = [
     "initial_green",
     "initial_terminal_reason",
     "initial_semantic_terminal_state",
+    "initial_actual_turns",
+    "initial_first_green_turn",
+    "initial_turns_after_first_green",
+    "initial_permission_denials_after_first_green",
+    "initial_solution_latency_observable",
+    "initial_solution_latency_source",
+    "initial_solution_latency_note",
     "failure_stage",
     "failure_reason",
     "initial_diff_bytes",
@@ -59,11 +77,25 @@ ROW_FIELDS = [
     "full_resume_green",
     "full_resume_terminal_reason",
     "full_resume_semantic_terminal_state",
+    "full_resume_actual_turns",
+    "full_resume_first_green_turn",
+    "full_resume_turns_after_first_green",
+    "full_resume_permission_denials_after_first_green",
+    "full_resume_solution_latency_observable",
+    "full_resume_solution_latency_source",
+    "full_resume_solution_latency_note",
     "stripped_resume_verify_exit",
     "stripped_resume_hidden_exit",
     "stripped_resume_green",
     "stripped_resume_terminal_reason",
     "stripped_resume_semantic_terminal_state",
+    "stripped_resume_actual_turns",
+    "stripped_resume_first_green_turn",
+    "stripped_resume_turns_after_first_green",
+    "stripped_resume_permission_denials_after_first_green",
+    "stripped_resume_solution_latency_observable",
+    "stripped_resume_solution_latency_source",
+    "stripped_resume_solution_latency_note",
     "full_added_regression_test",
     "stripped_added_regression_test",
     "agent_side_verification_claim",
@@ -308,8 +340,6 @@ def _detect_added_regression_test(diff_patch_path: Path) -> bool:
     if not patch_text:
         return False
 
-    # Simple heuristic: the patch must touch a test file and mention the
-    # core Task 4 churn vocabulary. This keeps the first version inspectable.
     test_file_present = False
     for match in DIFF_HEADER_RE.finditer(patch_text):
         paths = (match.group("a"), match.group("b"))
@@ -502,6 +532,10 @@ def _semantic_stage_state(
     )
 
 
+def _prefixed_latency(prefix: str, latency: dict[str, object]) -> dict[str, object]:
+    return {f"{prefix}_{field}": latency.get(field) for field in SOLUTION_LATENCY_FIELDS}
+
+
 def score_bundle(bundle_path: Path | str) -> dict[str, object]:
     bundle_path = Path(bundle_path)
     with tempfile.TemporaryDirectory(prefix="benchmark-scorecard-") as tmpdir:
@@ -519,17 +553,11 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
         initial_ready = not initial_not_ready.exists()
 
         initial_verify_exit = _infer_command_exit(
-            [
-                initial_run / "verification_final.txt",
-                initial_not_ready,
-            ],
+            [initial_run / "verification_final.txt", initial_not_ready],
             "verify",
         )
         initial_hidden_exit = _infer_command_exit(
-            [
-                initial_run / "hidden_evaluator_final.txt",
-                initial_not_ready,
-            ],
+            [initial_run / "hidden_evaluator_final.txt", initial_not_ready],
             "hidden",
         )
 
@@ -561,6 +589,22 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
         full_resume_green = full_resume_verify_exit == 0 and full_resume_hidden_exit == 0
         stripped_resume_green = stripped_resume_verify_exit == 0 and stripped_resume_hidden_exit == 0
 
+        initial_latency = summarize_solution_latency(
+            initial_run,
+            verify_exit=initial_verify_exit,
+            hidden_exit=initial_hidden_exit,
+        )
+        full_resume_latency = summarize_solution_latency(
+            full_resume_run,
+            verify_exit=full_resume_verify_exit,
+            hidden_exit=full_resume_hidden_exit,
+        )
+        stripped_resume_latency = summarize_solution_latency(
+            stripped_resume_run,
+            verify_exit=stripped_resume_verify_exit,
+            hidden_exit=stripped_resume_hidden_exit,
+        )
+
         row = {
             "bundle": str(bundle_path),
             "run_id": run_id,
@@ -577,6 +621,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 hidden_exit=initial_hidden_exit,
                 diff_bytes=initial_diff_bytes,
             ),
+            **_prefixed_latency("initial", initial_latency),
             "failure_stage": None if initial_ready else "initial",
             "failure_reason": _failure_reason_from_initial_run(initial_run) if not initial_ready else None,
             "initial_diff_bytes": initial_diff_bytes,
@@ -598,6 +643,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 diff_bytes=full_resume_diff_bytes,
                 is_run=full_resume_run_present,
             ),
+            **_prefixed_latency("full_resume", full_resume_latency),
             "stripped_resume_verify_exit": stripped_resume_verify_exit,
             "stripped_resume_hidden_exit": stripped_resume_hidden_exit,
             "stripped_resume_green": stripped_resume_green,
@@ -609,6 +655,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 diff_bytes=stripped_resume_diff_bytes,
                 is_run=stripped_resume_run_present,
             ),
+            **_prefixed_latency("stripped_resume", stripped_resume_latency),
             "full_added_regression_test": _detect_added_regression_test(full_resume_run / "diff.patch"),
             "stripped_added_regression_test": _detect_added_regression_test(stripped_resume_run / "diff.patch"),
             "agent_side_verification_claim": _agent_side_verification_claim(
