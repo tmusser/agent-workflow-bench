@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000
+MAX_PRESSURE_TARGET_PCT = 0.95
 PRESSURE_TARGET_PCTS = {
     "none": 0.0,
     "low": 0.05,
@@ -113,6 +114,8 @@ def build_context_pressure(
         target_pct = float(pressure_target_pct)
         if target_pct < 0:
             raise ValueError("pressure_target_pct must be non-negative")
+        if target_pct > MAX_PRESSURE_TARGET_PCT:
+            raise ValueError(f"pressure_target_pct must be <= {MAX_PRESSURE_TARGET_PCT}")
 
     if normalized_level == "none":
         target_pct = 0.0
@@ -166,7 +169,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pressure-level", default="none", choices=sorted(PRESSURE_TARGET_PCTS))
     parser.add_argument("--pressure-seed", type=int, default=0)
     parser.add_argument("--context-window-tokens", type=int, default=DEFAULT_CONTEXT_WINDOW_TOKENS)
-    parser.add_argument("--pressure-target-pct", type=float, default=None)
+    parser.add_argument(
+        "--pressure-target-pct",
+        type=float,
+        default=None,
+        help=(
+            "Optional synthetic pressure fraction of the context window. "
+            f"Must be between 0 and {MAX_PRESSURE_TARGET_PCT}."
+        ),
+    )
     parser.add_argument("--out")
     parser.add_argument("--metadata-out")
     args = parser.parse_args(argv)
