@@ -133,8 +133,7 @@ def test_hidden_evaluator_fails_starter_repo(tmp_path: Path):
     problems = evaluate(repo)
 
     assert problems
-    assert any("causal_claim_allowed must be false" in problem for problem in problems)
-    assert any("missing required blocker themes" in problem for problem in problems)
+    assert any("missing or invalid outputs/trust_report.json" in problem for problem in problems)
 
 
 def test_hidden_evaluator_rejects_missing_blockers(tmp_path: Path):

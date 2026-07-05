@@ -6,6 +6,7 @@ import difflib
 import io
 import json
 import os
+import shlex
 import re
 import subprocess
 import sys
@@ -451,20 +452,34 @@ def _task7_artifact_score_components(repo: Path, texts: list[str], artifact_cont
 def _run_command(repo: Path, args: list[str], *, timeout: int = 15) -> tuple[int, str, str, bool]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(repo / "src")
-    try:
-        completed = subprocess.run(
-            args,
-            cwd=repo,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-        )
-        return completed.returncode, completed.stdout, completed.stderr, False
-    except subprocess.TimeoutExpired as exc:
-        stdout = exc.stdout or ""
-        stderr = exc.stderr or ""
-        return -1, stdout, stderr + f"\ncommand timed out after {timeout}s", True
+    python_executable = shlex.quote(str(Path(sys.executable).resolve()))
+
+    with tempfile.TemporaryDirectory(prefix="task7-python-shim-") as shim_root:
+        shim_dir = Path(shim_root)
+        for name in ("python", "python3"):
+            shim_path = shim_dir / name
+            shim_path.write_text(
+                "#!/usr/bin/env bash\n"
+                f"exec {python_executable} \"$@\"\n",
+                encoding="utf-8",
+            )
+            shim_path.chmod(0o755)
+
+        env["PATH"] = shim_root + os.pathsep + env.get("PATH", "")
+        try:
+            completed = subprocess.run(
+                args,
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
+            )
+            return completed.returncode, completed.stdout, completed.stderr, False
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout or ""
+            stderr = exc.stderr or ""
+            return -1, stdout, stderr + f"\ncommand timed out after {timeout}s", True
 
 
 def _run_verify(repo: Path) -> tuple[int, str, str, bool]:
