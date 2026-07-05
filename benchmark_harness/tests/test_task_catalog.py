@@ -140,6 +140,9 @@ def test_pilot_smoke_entrypoint_resolves_python_before_legacy_helper():
     assert 'if [[ "${CLAUDE_OUTPUT_FORMAT:-}" != "json" ]] && claude_supports_stream_json;' in legacy
     assert "stream-json / stream_json observation" in legacy
     assert "forces JSON output and mtime_polling observation" in legacy
+    assert "PRESSURE_LEVEL" in legacy
+    assert "--pressure-level" in legacy
+    assert "context_pressure.json" in legacy
     assert "ENABLE_SKILL_RUNTIME_FINALIZER" in legacy
     assert "benchmark_harness.skill_runtime_finalizer" in legacy
     assert "SKILL_RUNTIME_FINALIZER_PROMPT.md" in legacy

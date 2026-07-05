@@ -55,6 +55,18 @@ def test_run_provenance_cli_writes_alias_metadata(tmp_path: Path):
                 "acceptEdits",
                 "--output-format",
                 "json",
+                "--pressure-level",
+                "medium",
+                "--pressure-seed",
+                "7",
+                "--pressure-tokens-estimated",
+                "3000",
+                "--context-window-tokens",
+                "20000",
+                "--estimated-context-utilization",
+                "15.0",
+                "--pressure-target-pct",
+                "0.15",
             ]
         )
         == 0
@@ -69,6 +81,12 @@ def test_run_provenance_cli_writes_alias_metadata(tmp_path: Path):
     assert data["alias_applied"] is True
     assert data["alias_reason"] == "Task 7 legacy B label maps to task-specific strong no-skill wrapper"
     assert data["context_mode"] == "full resume"
+    assert data["pressure_level"] == "medium"
+    assert data["pressure_seed"] == 7
+    assert data["pressure_tokens_estimated"] == 3000
+    assert data["context_window_tokens"] == 20000
+    assert data["estimated_context_utilization"] == 15.0
+    assert data["pressure_target_pct"] == 0.15
     assert data["arm_wrapper_path"] == "arms/B-strong-no-skill-task7.md"
     assert data["task_prompt_path"] == "tasks/07-dashboard-export-scope-pressure/starter_repo/TASK.md"
     assert data["resume_prompt_path"] == "benchmark_harness/protocols/FRESH_SESSION_PROMPT_TASK7.md"

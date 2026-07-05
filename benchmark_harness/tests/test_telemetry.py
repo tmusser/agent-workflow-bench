@@ -220,6 +220,36 @@ def test_collect_run_estimates_context_from_local_input_file(
     assert fields["input_file_path"] == f"benchmark-data/runs/{run_id}/prompt.md"
 
 
+def test_collect_run_emits_pressure_metadata_without_run_metrics(tmp_path: Path):
+    run_id = "vtest_pressure_only"
+    run_dir = tmp_path / "benchmark-data" / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "prompt.md").write_text("local prompt body " * 100, encoding="utf-8")
+    (run_dir / "context_pressure.json").write_text(
+        json.dumps(
+            {
+                "pressure_level": "medium",
+                "pressure_seed": 7,
+                "pressure_tokens_estimated": 3000,
+                "context_window_tokens": 20000,
+                "estimated_context_utilization": 15.0,
+                "pressure_target_pct": 0.15,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    out = telemetry.collect_run(root=tmp_path, run_id=run_id)
+    context = next(event for event in telemetry.read_events(out) if event["event_type"] == "context_window.status")
+
+    assert context["fields"]["pressure_level"] == "medium"
+    assert context["fields"]["pressure_seed"] == 7
+    assert context["fields"]["pressure_tokens_estimated"] == 3000
+    assert context["fields"]["estimated_context_utilization"] == 15.0
+    assert context["fields"]["context_window_tokens"] == 20000
+
+
 def test_collect_run_sanitizes_absolute_provenance_paths(tmp_path: Path):
     run_id = "vtest_paths"
     run_dir = tmp_path / "benchmark-data" / "runs" / run_id

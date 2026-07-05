@@ -61,6 +61,12 @@ def build_run_provenance(
     max_turns: int,
     permission_mode: str,
     output_format: str,
+    pressure_level: str = "none",
+    pressure_seed: int = 0,
+    pressure_tokens_estimated: int = 0,
+    context_window_tokens: int | None = None,
+    estimated_context_utilization: float = 0.0,
+    pressure_target_pct: float | None = None,
 ) -> dict[str, object]:
     root_dir = root_dir.resolve()
     arm_wrapper_path = (root_dir / arm_wrapper).resolve()
@@ -100,6 +106,12 @@ def build_run_provenance(
         "max_turns": int(max_turns),
         "permission_mode": permission_mode,
         "output_format": output_format,
+        "pressure_level": pressure_level,
+        "pressure_seed": int(pressure_seed),
+        "pressure_tokens_estimated": int(pressure_tokens_estimated),
+        "context_window_tokens": int(context_window_tokens) if context_window_tokens is not None else None,
+        "estimated_context_utilization": float(estimated_context_utilization),
+        "pressure_target_pct": pressure_target_pct,
         "arm_wrapper_path": _relative_or_resolved(arm_wrapper_path, root_dir),
         "arm_wrapper_sha256": _sha256(arm_wrapper_path),
         "task_prompt_path": _relative_or_resolved(task_prompt_path, root_dir),
@@ -133,6 +145,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-turns", required=True, type=int)
     parser.add_argument("--permission-mode", required=True)
     parser.add_argument("--output-format", required=True)
+    parser.add_argument("--pressure-level", default="none")
+    parser.add_argument("--pressure-seed", type=int, default=0)
+    parser.add_argument("--pressure-tokens-estimated", type=int, default=0)
+    parser.add_argument("--context-window-tokens", type=int, default=None)
+    parser.add_argument("--estimated-context-utilization", type=float, default=0.0)
+    parser.add_argument("--pressure-target-pct", type=float, default=None)
     args = parser.parse_args(argv)
 
     provenance = write_run_provenance(
@@ -150,6 +168,12 @@ def main(argv: list[str] | None = None) -> int:
         max_turns=args.max_turns,
         permission_mode=args.permission_mode,
         output_format=args.output_format,
+        pressure_level=args.pressure_level,
+        pressure_seed=args.pressure_seed,
+        pressure_tokens_estimated=args.pressure_tokens_estimated,
+        context_window_tokens=args.context_window_tokens,
+        estimated_context_utilization=args.estimated_context_utilization,
+        pressure_target_pct=args.pressure_target_pct,
     )
     print(json.dumps(provenance, indent=2, sort_keys=True))
     return 0
