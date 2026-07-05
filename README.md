@@ -38,6 +38,7 @@ For inferred skill evidence summaries, see [docs/skill-routing-summary.md](docs/
 
 - The visible task fixes an inclusive/exclusive SLA deadline bug.
 - The benchmark checks whether the fix is localized, preserves the report shape, and avoids fixture edits or hardcoded fixture answers.
+- The current Haiku pilot is a low-ceremony smoke: A and E both pass, and the lighter E wrapper is viable and artifact-producing but not clearly more efficient in aggregate.
 - See [docs/task1.md](docs/task1.md).
 
 ### Task 2: Campaign Channel Normalization
@@ -89,6 +90,8 @@ For inferred skill evidence summaries, see [docs/skill-routing-summary.md](docs/
 
 Proven by the current pilot:
 
+- Task 1: the low-ceremony smoke works; both A and E solve the simple boundary bug across initial/full/stripped phases.
+- Task 1: E-arm viability depends on ceremony calibration. The lighter E wrapper is artifact-producing and resume-ready; the earlier heavier generic wrapper was not viable under the same 20-turn budget.
 - Task 4: the artifact/resume mechanism works.
 - Task 5: the public-pass/hidden-fail data-trust trap works.
 - Task 7: sharper invalidation around compatibility seams and test integrity is more useful than heavier ceremony.
@@ -99,6 +102,7 @@ Not proven:
 - skill packs broadly outperform baseline.
 - skills guarantee functional correctness.
 - these tasks generalize to all coding work.
+- Task 1 proves a broad performance advantage for skills. It is a low-ceremony instrumentation smoke.
 
 ### Current task evidence summary
 
@@ -106,7 +110,7 @@ This table reflects the current pilot, not a universal result set.
 
 | Task | Status | Evidence / reading |
 | --- | --- | --- |
-| Task 1 | added / unrun | Low-ceremony SLA boundary bugfix meant to fill the first rung. |
+| Task 1 | piloted smoke | A and lighter E both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E is viable and artifact-producing, but not clearly more efficient in aggregate. |
 | Task 2 | newly added / unrun | Input-normalization bridge task: broader than a comparison fix, still narrow and local. |
 | Task 3 | newly added / unrun | Aggregation-grain bridge task: entity count vs event count without Task 4 resumability pressure. |
 | Task 4 | piloted | Functional fixes landed; skill-routed runs left durable `BUGS.md`, `VERIFY.md`, and `HANDOFF.md`-style context for audit/resume. |
@@ -120,6 +124,8 @@ These rows are examples of the current scorecard shape. They are not a complete 
 
 | Task | Arm | Scorecard shape | Artifact mechanism | Reading |
 | --- | --- | --- | --- | --- |
+| Task 1 | A baseline | green | inactive | Functional pass across initial/full/stripped on a one-line SLA boundary fix. |
+| Task 1 | E ai-engineering-skills | green / skill proof + artifacts | active | Functional pass with `VERIFY.md` and validator-compatible `SKILL_RUNTIME_PROOF.md`; useful smoke for ceremony calibration, not broad superiority evidence. |
 | Task 4 | A baseline | green | inactive | Functional pass without workflow-skill artifacts. |
 | Task 4 | E ai-engineering-skills | green | active | Functional pass with workflow artifacts and resume support. |
 | Task 5 | A baseline | initial_fail / hidden fail | inactive | Expected negative result from the public-pass / hidden-fail trap. |
@@ -179,9 +185,10 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 
 - The pilot is intentionally narrow.
 - The current task set is designed to surface workflow and verification behavior, not to rank all agents on all coding work.
+- Task 1 is a low-ceremony smoke and should not be read as evidence of broad skill superiority.
 - Task 5 yellow rows are useful negative results, not broken scorecard rows.
 - Generated artifacts, bundles, and local caches should stay out of source control.
-- Tasks 1-3 have not been piloted yet; they are harness/task additions, not benchmark results.
+- Tasks 2-3 have not been piloted yet; they are harness/task additions, not benchmark results.
 
 ## 9. Roadmap
 
