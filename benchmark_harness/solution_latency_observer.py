@@ -803,33 +803,9 @@ def run(
                 hidden_evaluator_module=hidden_evaluator_module,
             )
         raise ValueError(f"unknown observation mode: {mode}")
-    except Exception as exc:  # pragma: no cover - best-effort fallback
+    except Exception as exc:  # pragma: no cover - best-effort error handling
         _write_text(run_dir / "solution_latency_observer_error.txt", f"{exc.__class__.__name__}: {exc}\n")
-        command = [
-            claude_cmd,
-            "-p",
-        ]
-        if plugin_dir:
-            command.extend(["--plugin-dir", plugin_dir])
-        command.extend(
-            [
-                "--model",
-                model,
-                "--effort",
-                effort,
-                "--max-turns",
-                str(max_turns),
-                *_claude_permission_args(permission_mode),
-                "--output-format",
-                "json",
-                prompt_text,
-            ]
-        )
-        proc = subprocess.run(command, cwd=repo_root, capture_output=True, text=True, check=False)
-        _write_text(run_dir / "claude_stdout.txt", proc.stdout or "")
-        _write_text(run_dir / "claude_stderr.txt", proc.stderr or "")
-        _write_text(run_dir / "claude_exit_code.txt", f"{proc.returncode}\n")
-        return proc.returncode
+        return 1
 
 
 def main(argv: list[str] | None = None) -> int:

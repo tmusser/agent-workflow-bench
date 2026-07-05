@@ -3,7 +3,10 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from benchmark_harness.solution_latency_observer import evaluate_checkpoint_snapshot, is_bench_ready_green
+import benchmark_harness.solution_latency_observer as solution_latency_observer
 
 
 def _write(path: Path, text: str) -> None:
@@ -108,3 +111,55 @@ def test_checkpoint_outputs_stay_outside_agent_repo(tmp_path: Path):
     assert record["source"] == "stream_json"
     assert (run_dir / "solution_latency_checkpoints" / "checkpoint_0001" / "hidden_evaluator.txt").exists()
     assert not (repo_root / "hidden_evaluator.txt").exists()
+
+
+def test_observer_error_does_not_relaunch_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    repo_root = tmp_path / "repo"
+    run_dir = tmp_path / "run"
+    repo_root.mkdir()
+    run_dir.mkdir()
+    _write(repo_root / "prompt.md", "prompt\n")
+    _write(repo_root / "VERIFY.md", "Run VERIFY.sh and record the result.\n")
+    _write(run_dir / "claude_stdout.txt", "preserve stdout\n")
+    _write(run_dir / "claude_stderr.txt", "preserve stderr\n")
+    _write(run_dir / "claude_exit_code.txt", "7\n")
+
+    calls = {"fallback": 0}
+
+    def fake_stream_json_observer(**_: object) -> int:
+        _write(run_dir / "claude_stdout.txt", "preserve stdout\n")
+        _write(run_dir / "claude_stderr.txt", "preserve stderr\n")
+        _write(run_dir / "claude_exit_code.txt", "7\n")
+        raise RuntimeError("observer boom")
+
+    def fake_subprocess_run(*_: object, **__: object) -> object:
+        calls["fallback"] += 1
+        raise AssertionError("fallback Claude run must not be invoked")
+
+    monkeypatch.setattr(solution_latency_observer, "_run_stream_json_observer", fake_stream_json_observer)
+    monkeypatch.setattr(solution_latency_observer.subprocess, "run", fake_subprocess_run)
+
+    exit_code = solution_latency_observer.run(
+        repo_root=repo_root,
+        run_dir=run_dir,
+        run_id="run-1",
+        task_slug="03-refund-grain",
+        arm_slug="A-baseline",
+        phase="initial",
+        prompt_file=repo_root / "prompt.md",
+        claude_cmd="claude",
+        model="sonnet",
+        effort="low",
+        max_turns=20,
+        permission_mode="acceptEdits",
+        plugin_dir=None,
+        hidden_evaluator_module="benchmark_harness.evaluators.task3_hidden_evaluator",
+        mode="stream_json",
+    )
+
+    assert exit_code == 1
+    assert calls["fallback"] == 0
+    assert (run_dir / "solution_latency_observer_error.txt").read_text(encoding="utf-8") == "RuntimeError: observer boom\n"
+    assert (run_dir / "claude_stdout.txt").read_text(encoding="utf-8") == "preserve stdout\n"
+    assert (run_dir / "claude_stderr.txt").read_text(encoding="utf-8") == "preserve stderr\n"
+    assert (run_dir / "claude_exit_code.txt").read_text(encoding="utf-8") == "7\n"
