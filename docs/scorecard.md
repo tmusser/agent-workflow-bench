@@ -47,14 +47,15 @@ Scorecard rows are meant to compare:
 - workflow artifact presence
 - fresh-session resume behavior
 - artifact mechanism activation
-- context-pressure configuration and estimated utilization
+- context-pressure configuration and estimated synthetic-pressure utilization
 
 ## Behavior Notes
 
 - Full eval bundles may populate resume fields when resume artifacts are present.
 - Initial-fail bundles do not have resume workspaces, so resume fields are reported as `not_run`.
 - `artifact_mechanism_active` only becomes `true` when stripped artifacts were actually removed, not merely when workflow artifacts exist in the repo.
-- `pressure_level`, `pressure_seed`, `pressure_tokens_estimated`, and `estimated_context_utilization` describe the synthetic background-context load injected by the runner.
+- `pressure_level`, `pressure_seed`, and `pressure_tokens_estimated` describe the synthetic background-context load injected by the runner.
+- `estimated_context_utilization` is pressure-only: `pressure_tokens_estimated / context_window_tokens`. It does not represent the full rendered prompt or all model-visible state.
 - `max_context_utilization` is only populated when actual usage metadata is available from the run.
 - Task 5 yellow rows are useful negative results: they show the initial gate failed for the expected reasons, not that the scorecard itself is broken.
 
