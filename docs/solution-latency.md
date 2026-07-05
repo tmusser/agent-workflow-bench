@@ -27,22 +27,55 @@ Phases use these prefixes:
 - `full_resume`
 - `stripped_resume`
 
+## Emitted Artifact
+
+The pilot wrapper now runs a best-effort post-processing step:
+
+```bash
+python -m benchmark_harness.emit_solution_latency annotate --root "$ROOT_DIR" --run-id "$RUN_ID"
+```
+
+For each collected phase, this writes `solution_latency.json` into that phase's
+run directory before the eval bundle is rebuilt.
+
+For final-only runs without per-turn traces, the artifact records known final
+state while keeping first-green latency unobservable:
+
+```json
+{
+  "actual_turns": 21,
+  "final_green": true,
+  "final_hidden_exit": 0,
+  "final_verify_exit": 0,
+  "first_green_turn": null,
+  "note": "final_only_no_per_turn_trace",
+  "phase": "initial",
+  "solution_latency_observable": false,
+  "source": "final_collect_only",
+  "turns_after_first_green": null
+}
+```
+
+This is intentionally different from omitting the field. It says: the harness
+looked for latency evidence and only had final-state evidence.
+
 ## Current Bundle Behavior
 
-For current bundles without per-turn traces:
+For bundles without per-turn traces:
 
 - `actual_turns` can be read from `run_metrics.json` when present.
 - `first_green_turn` remains empty.
 - `turns_after_first_green` remains empty.
 - `solution_latency_observable` is `false`.
-- `solution_latency_note` is `not_observable`.
+- `solution_latency_note` is either `not_observable` for older bundles or
+  `final_only_no_per_turn_trace` for bundles with emitted summaries.
 
 This is intentional. It preserves the difference between:
 
 - **known**: the final workspace is green;
 - **unknown**: the exact turn where it first became green.
 
-## Future Bundle Inputs
+## Observable Bundle Inputs
 
 The scorecard can compute first-green turn when a run directory includes one of
 these optional files.
@@ -55,12 +88,14 @@ these optional files.
   "first_green_turn": 7,
   "turns_after_first_green": 14,
   "permission_denials_after_first_green": 3,
+  "solution_latency_observable": true,
   "note": "computed_by_harness"
 }
 ```
 
-Only `first_green_turn` is required. When `actual_turns` is present in
-`run_metrics.json`, `turns_after_first_green` can be derived.
+Only `first_green_turn` is required for an observable summary. When
+`actual_turns` is present in `run_metrics.json`, `turns_after_first_green` can be
+derived.
 
 ### `turn_events.jsonl` or `solution_timeline.jsonl`
 
