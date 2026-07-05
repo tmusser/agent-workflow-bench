@@ -89,8 +89,8 @@ def discover_metrics_files(root: str | Path) -> list[Path]:
     paths: list[Path] = []
     for candidate in candidates:
         if candidate.is_dir():
-            paths.extend(candidate.glob("*/run_metrics.json"))
-    return sorted(paths)
+            paths.extend(sorted(candidate.glob("*/run_metrics.json")))
+    return paths
 
 
 def annotate_discovered(root: str | Path = ".") -> int:
