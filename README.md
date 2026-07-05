@@ -59,6 +59,7 @@ For inferred skill evidence summaries, see [docs/skill-routing-summary.md](docs/
 
 - The visible task fixes a duplicated-join churn bug.
 - The benchmark checks whether the fix is durable across resume contexts and whether the agent leaves useful verification evidence.
+- The current Haiku rerun is an artifact/resume bridge smoke: A r2 and E r3 both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E r3 produced `VERIFY.md` and validator-compatible `SKILL_RUNTIME_PROOF.md`; stripped resume removed those artifacts and still passed. Because the current print-mode harness only evaluates after Claude exits, first-green latency is unobservable when runs terminate at `max_turns`. E r3 was cheaper/faster at the same capped turn budget, but this remains suggestive audit/resume evidence, not broad superiority evidence.
 - The current Haiku rerun is an artifact/resume bridge smoke: A r2 and E r3 both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E r3 produced `VERIFY.md` and validator-compatible `SKILL_RUNTIME_PROOF.md`; stripped resume removed those artifacts and still passed. E was cheaper/faster in this sample, but both arms hit `max_turns` in every phase, so treat this as audit/resume evidence, not broad superiority evidence.
 
 ### Task 5: Fake Data Campaign Lift Trust
@@ -199,6 +200,7 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 - Tasks 1-3 are low-ceremony smoke / bridge tasks and should not be read as evidence of broad skill superiority.
 - Task 5 yellow rows are useful negative results, not broken scorecard rows.
 - Generated artifacts, bundles, and local caches should stay out of source control.
+- Current full-auto runs collect verification only after Claude exits, so `terminal_reason=max_turns` does not imply the solution first became correct at the final turn. First-green latency requires per-turn or checkpoint evaluation.
 
 ## 9. Roadmap
 
