@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import shutil
+import sys
 import textwrap
 from pathlib import Path
 
@@ -120,7 +121,7 @@ def _make_valid_repo(tmp_path: Path, *, include_csv: bool = True, include_review
         import subprocess
         subprocess.run(
             [
-                "python",
+                sys.executable,
                 "scripts/generate_v1_v2_comparison.py",
             ],
             cwd=repo,
