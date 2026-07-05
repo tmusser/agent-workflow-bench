@@ -73,24 +73,50 @@ def build_summary(run_dir: Path, *, phase: str, verify_exit: int, hidden_exit: i
     metrics = _read_json(run_dir / "run_metrics.json")
     inferred = summarize_solution_latency(run_dir, verify_exit=verify_exit, hidden_exit=hidden_exit)
     observable = bool(inferred.get("solution_latency_observable"))
+    run_id = metrics.get("run_id")
+    if not isinstance(run_id, str) or not run_id.strip():
+        run_id = run_dir.name
+    task_slug = metrics.get("task_slug")
+    arm_slug = metrics.get("arm_slug")
+    has_turn_trace = any((run_dir / name).exists() for name in ("turn_events.jsonl", "solution_timeline.jsonl"))
+    source = inferred.get("source") or inferred.get("solution_latency_source") or FINAL_ONLY_NOTE
+    note = inferred.get("note") or inferred.get("solution_latency_note") or FINAL_ONLY_NOTE
+    if not has_turn_trace and source == FINAL_ONLY_NOTE and note == "not_observable":
+        note = FINAL_ONLY_NOTE
 
-    return {
+    summary = {
         "schema_version": 1,
+        "run_id": run_id,
+        "task_slug": task_slug,
+        "arm_slug": arm_slug,
         "phase": phase,
         "actual_turns": inferred.get("actual_turns"),
+        "final_turns": inferred.get("final_turns"),
         "max_turns": _as_int(metrics.get("max_turns")),
         "terminal_reason": metrics.get("terminal_reason"),
         "claude_exit_code": _as_int(metrics.get("claude_exit_code")),
         "final_verify_exit": verify_exit,
         "final_hidden_exit": hidden_exit,
         "final_green": verify_exit == 0 and hidden_exit == 0,
+        "observable": observable,
         "first_green_turn": inferred.get("first_green_turn"),
+        "first_functional_green_turn": inferred.get("first_functional_green_turn"),
+        "first_functional_green_wall_seconds": inferred.get("first_functional_green_wall_seconds"),
+        "first_bench_ready_green_turn": inferred.get("first_bench_ready_green_turn"),
+        "first_bench_ready_green_wall_seconds": inferred.get("first_bench_ready_green_wall_seconds"),
         "turns_after_first_green": inferred.get("turns_after_first_green"),
+        "turns_after_first_functional_green": inferred.get("turns_after_first_functional_green"),
+        "turns_after_first_bench_ready_green": inferred.get("turns_after_first_bench_ready_green"),
         "permission_denials_after_first_green": inferred.get("permission_denials_after_first_green"),
         "solution_latency_observable": observable,
-        "source": inferred.get("solution_latency_source") if observable else "final_collect_only",
-        "note": inferred.get("solution_latency_note") if observable else FINAL_ONLY_NOTE,
+        "source": source,
+        "solution_latency_source": source,
+        "note": note,
+        "solution_latency_note": note,
+        "checkpoint_count": inferred.get("checkpoint_count"),
+        "checkpoint_eval_errors": inferred.get("checkpoint_eval_errors"),
     }
+    return summary
 
 
 def write_summary(run_dir: Path, *, phase: str, verify_exit: int, hidden_exit: int) -> Path:

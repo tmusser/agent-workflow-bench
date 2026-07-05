@@ -36,9 +36,13 @@ def test_build_summary_records_final_only_boundary(tmp_path: Path):
     assert summary["final_hidden_exit"] == 0
     assert summary["final_green"] is True
     assert summary["first_green_turn"] is None
+    assert summary["first_functional_green_turn"] is None
+    assert summary["first_bench_ready_green_turn"] is None
     assert summary["turns_after_first_green"] is None
+    assert summary["turns_after_first_functional_green"] is None
+    assert summary["turns_after_first_bench_ready_green"] is None
     assert summary["solution_latency_observable"] is False
-    assert summary["source"] == "final_collect_only"
+    assert summary["source"] == "final_only_no_per_turn_trace"
     assert summary["note"] == "final_only_no_per_turn_trace"
 
 
@@ -53,6 +57,8 @@ def test_write_summary_persists_json(tmp_path: Path):
     assert data["actual_turns"] == 10
     assert data["final_green"] is False
     assert data["final_hidden_exit"] == 1
+    assert data["first_functional_green_turn"] is None
+    assert data["first_bench_ready_green_turn"] is None
 
 
 def test_annotate_run_writes_collected_phase_summaries(tmp_path: Path):
