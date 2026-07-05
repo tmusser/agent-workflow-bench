@@ -28,6 +28,60 @@ cd tasks/03-refund-grain/starter_repo
 
 The starter state is intentionally failing.
 
+## Current Haiku Smoke Result
+
+Task 3 was piloted on PR #12 with `CLAUDE_MODEL=haiku`,
+`CLAUDE_EFFORT=low`, `CLAUDE_OUTPUT_FORMAT=json`, and
+`CLAUDE_PERMISSION_MODE=acceptEdits`.
+
+Bundles inspected:
+
+- `t3_haiku_A_pr12_r1-eval-bundle.tar.gz`
+- `t3_haiku_E_pr12_r1-eval-bundle.tar.gz`
+
+Both A and E solved the task across initial, full-resume, and stripped-resume
+phases. All six phases passed public verification and the hidden evaluator.
+
+Both arms made the intended localized fix in `src/commerce/metrics.py`, changing
+the refund-rate numerator from refund-event rows to unique refunded `order_id`
+values:
+
+```diff
+- refunds_with_product.groupby("product", sort=True)["refund_id"].count()
++ refunds_with_product.groupby("product", sort=True)["order_id"].nunique()
+```
+
+| Arm | Phase | Public + hidden | Terminal reason | Turns | Cost USD | Wall seconds | Bash denials |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| A baseline | initial | pass | max_turns | 21 | 0.1210224 | 55.860 | 8 |
+| A baseline | full resume | pass | max_turns | 21 | 0.1479584 | 91.587 | 6 |
+| A baseline | stripped resume | pass | completed | 22 | 0.1101387 | 63.406 | 2 |
+| E ai-engineering-skills | initial | pass | max_turns | 21 | 0.1351059 | 69.396 | 4 |
+| E ai-engineering-skills | full resume | pass | max_turns | 21 | 0.1438478 | 90.030 | 3 |
+| E ai-engineering-skills | stripped resume | pass | max_turns | 21 | 0.1293860 | 71.446 | 2 |
+
+Aggregate over initial/full/stripped:
+
+| Arm | Turns | Cost USD | Wall seconds | Bash denials | Completed phases |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A baseline | 64 | 0.3791195 | 210.853 | 16 | 1 / 3 |
+| E ai-engineering-skills | 63 | 0.4083397 | 230.872 | 9 | 0 / 3 |
+
+Reading:
+
+- Task 3 adds another green smoke/bridge result and validates the refund-grain
+  task design.
+- This sample is not an E-arm efficiency win: A was cheaper and faster overall.
+- E had fewer Bash denials and produced expected proof artifacts in initial/full
+  contexts, which is useful audit evidence but not enough to claim superiority.
+- A's stripped-resume `completed` terminal state should be interpreted carefully:
+  functional correctness was verified by the harness, while the agent's terminal
+  shape was closer to asking for verification than delivering a strong final
+  done/verified state.
+- `max_turns` should not be read as functional failure when public and hidden
+  verification pass. Functional result and terminal result should be interpreted
+  separately.
+
 ## Smoke Helper Examples
 
 ```bash
