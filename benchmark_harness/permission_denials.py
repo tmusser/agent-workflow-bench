@@ -55,10 +55,28 @@ def extract_from_stdout(stdout_text: str) -> dict[str, Any]:
     try:
         raw = json.loads(stdout_text)
     except json.JSONDecodeError:
-        return {}
+        raw = None
     if not isinstance(raw, dict):
+        raw = None
+
+    if raw is not None:
+        return extract_permission_denial_metrics(raw)
+
+    last_result: dict[str, Any] | None = None
+    for line in stdout_text.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            if isinstance(event.get("permission_denials"), list):
+                last_result = event
+            elif str(event.get("type", "")).lower() == "result" and last_result is None:
+                last_result = event
+
+    if last_result is None:
         return {}
-    return extract_permission_denial_metrics(raw)
+    return extract_permission_denial_metrics(last_result)
 
 
 def annotate_metrics_file(metrics_path: str | Path) -> bool:

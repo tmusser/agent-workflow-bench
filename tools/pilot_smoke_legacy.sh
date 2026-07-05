@@ -35,8 +35,9 @@ CLAUDE_MAX_TURNS="${CLAUDE_MAX_TURNS:-20}"
 CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-dangerously-skip-permissions}"
 CLAUDE_PLUGIN_DIR="${CLAUDE_PLUGIN_DIR:-}"
 CLAUDE_OUTPUT_FORMAT="${CLAUDE_OUTPUT_FORMAT:-text}"
-# Tip: set CLAUDE_OUTPUT_FORMAT=json to let run_metrics.json capture any usage
-# metadata the Claude CLI emits, including num_turns and token counts.
+# Tip: the helper prefers stream-json when the Claude CLI supports it and falls
+# back to JSON so run_metrics.json can still capture turn and usage metadata.
+# Tip: set CLAUDE_OUTPUT_FORMAT=json to force the fallback JSON output path.
 
 usage() {
   cat <<EOF_USAGE
@@ -62,7 +63,7 @@ Default task:   ${TASK_SLUG} (${TASK_ID})
 Default RUN_ID: ${RUN_ID}
 Default arm:    ${ARM_SLUG}
 Claude default: ${CLAUDE_CMD} --model ${CLAUDE_MODEL} --effort ${CLAUDE_EFFORT} --max-turns ${CLAUDE_MAX_TURNS} ${CLAUDE_PERMISSION_MODE}
-Tip: set CLAUDE_OUTPUT_FORMAT=json to let run_metrics.json capture num_turns and usage metadata when the Claude CLI exposes it.
+Tip: the helper auto-detects stream-json support and falls back to JSON for run metrics.
 
 Override examples:
   CLAUDE_MODEL=sonnet CLAUDE_EFFORT=low ./tools/pilot_smoke.sh auto-a-r1
@@ -133,6 +134,10 @@ claude_permission_args() {
   else
     CLAUDE_PERMISSION_ARGS=(--permission-mode "$CLAUDE_PERMISSION_MODE")
   fi
+}
+
+claude_supports_stream_json() {
+  "$CLAUDE_CMD" -p --help 2>&1 | grep -Eq 'stream-json'
 }
 
 ensure_venv_active_or_create() {
@@ -341,6 +346,14 @@ run_claude_print() {
   echo "  permission: $CLAUDE_PERMISSION_MODE"
   echo
 
+  local actual_output_format observer_mode
+  actual_output_format="json"
+  observer_mode="mtime_polling"
+  if claude_supports_stream_json; then
+    actual_output_format="stream-json"
+    observer_mode="stream_json"
+  fi
+
   local root_dir prompt_abs stdout_abs stderr_abs
   root_dir="$(pwd)"
   prompt_abs="${root_dir}/${prompt_file}"
@@ -370,23 +383,31 @@ PY
     --effort "$CLAUDE_EFFORT" \
     --max-turns "$CLAUDE_MAX_TURNS" \
     --permission-mode "$CLAUDE_PERMISSION_MODE" \
-    --output-format "$CLAUDE_OUTPUT_FORMAT"
+    --output-format "$actual_output_format"
+
+  local observer_cmd=(
+    python -m benchmark_harness.solution_latency_observer run
+    --repo-root "$repo"
+    --run-dir "${root_dir}/${out_dir}"
+    --run-id "$RUN_ID"
+    --task-slug "$TASK_SLUG"
+    --arm-slug "$ARM_SLUG"
+    --phase "$label"
+    --prompt-file "$prompt_abs"
+    --claude-cmd "$CLAUDE_CMD"
+    --model "$CLAUDE_MODEL"
+    --effort "$CLAUDE_EFFORT"
+    --max-turns "$CLAUDE_MAX_TURNS"
+    --permission-mode "$CLAUDE_PERMISSION_MODE"
+    --hidden-evaluator-module "$HIDDEN_EVALUATOR_MODULE"
+    --mode "$observer_mode"
+  )
+  if [[ -n "${CLAUDE_PLUGIN_DIR:-}" ]]; then
+    observer_cmd+=(--plugin-dir "$CLAUDE_PLUGIN_DIR")
+  fi
 
   set +e
-  (
-    cd "$repo"
-    claude_permission_args
-    "$CLAUDE_CMD" -p \
-      ${CLAUDE_PLUGIN_DIR:+--plugin-dir "$CLAUDE_PLUGIN_DIR"} \
-      --model "$CLAUDE_MODEL" \
-      --effort "$CLAUDE_EFFORT" \
-      --max-turns "$CLAUDE_MAX_TURNS" \
-      "${CLAUDE_PERMISSION_ARGS[@]}" \
-      --output-format "$CLAUDE_OUTPUT_FORMAT" \
-      "$(cat "$prompt_abs")" \
-      > "$stdout_abs" \
-      2> "$stderr_abs"
-  )
+  "${observer_cmd[@]}"
   exit_code=$?
   set -e
   end_ns="$(python - <<'PY'
@@ -444,7 +465,7 @@ PY
   EFFORT="$CLAUDE_EFFORT" \
   MAX_TURNS="$CLAUDE_MAX_TURNS" \
   PERMISSION_MODE="$CLAUDE_PERMISSION_MODE" \
-  OUTPUT_FORMAT="$CLAUDE_OUTPUT_FORMAT" \
+  OUTPUT_FORMAT="$actual_output_format" \
   CLAUDE_EXIT_CODE="$exit_code" \
   WALL_CLOCK_SECONDS="$wall_clock_seconds" \
   STDOUT_BYTES="$stdout_bytes" \
@@ -525,6 +546,31 @@ if provenance_path.exists():
                 if provenance.get(key) is not None:
                     data[key] = provenance.get(key)
 
+def apply_result_payload(raw: dict[str, object]) -> None:
+    global reached_max_turns
+    if raw.get("num_turns") is not None:
+        data["actual_turns"] = raw.get("num_turns")
+    for key in ("duration_ms", "duration_api_ms", "ttft_ms", "ttft_stream_ms", "time_to_request_ms", "total_cost_usd", "terminal_reason", "stop_reason", "session_id", "uuid"):
+        if raw.get(key) is not None:
+            data[key] = raw.get(key)
+    usage = raw.get("usage")
+    if isinstance(usage, dict):
+        for key in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "service_tier", "speed", "inference_geo"):
+            if usage.get(key) is not None:
+                data[f"usage_{key}"] = usage.get(key)
+        server_tool_use = usage.get("server_tool_use")
+        if isinstance(server_tool_use, dict):
+            for key in ("web_search_requests", "web_fetch_requests"):
+                if server_tool_use.get(key) is not None:
+                    data[f"usage_server_tool_use_{key}"] = server_tool_use.get(key)
+    if reached_max_turns == "unknown":
+        stop_reason = str(raw.get("stop_reason") or "").lower()
+        terminal_reason = str(raw.get("terminal_reason") or "").lower()
+        if stop_reason == "max_turns" or terminal_reason == "max_turns":
+            reached_max_turns = True
+        elif stop_reason or terminal_reason:
+            reached_max_turns = False
+
 if os.environ["OUTPUT_FORMAT"] == "json":
     try:
         raw = json.loads(stdout_text)
@@ -532,28 +578,18 @@ if os.environ["OUTPUT_FORMAT"] == "json":
         data["claude_json_parse_error"] = f"{exc.__class__.__name__}: {exc}"
     else:
         if isinstance(raw, dict):
-            if raw.get("num_turns") is not None:
-                data["actual_turns"] = raw.get("num_turns")
-            for key in ("duration_ms", "duration_api_ms", "ttft_ms", "ttft_stream_ms", "time_to_request_ms", "total_cost_usd", "terminal_reason", "stop_reason", "session_id", "uuid"):
-                if raw.get(key) is not None:
-                    data[key] = raw.get(key)
-            usage = raw.get("usage")
-            if isinstance(usage, dict):
-                for key in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "service_tier", "speed", "inference_geo"):
-                    if usage.get(key) is not None:
-                        data[f"usage_{key}"] = usage.get(key)
-                server_tool_use = usage.get("server_tool_use")
-                if isinstance(server_tool_use, dict):
-                    for key in ("web_search_requests", "web_fetch_requests"):
-                        if server_tool_use.get(key) is not None:
-                            data[f"usage_server_tool_use_{key}"] = server_tool_use.get(key)
-            if reached_max_turns == "unknown":
-                stop_reason = str(raw.get("stop_reason") or "").lower()
-                terminal_reason = str(raw.get("terminal_reason") or "").lower()
-                if stop_reason == "max_turns" or terminal_reason == "max_turns":
-                    reached_max_turns = True
-                elif stop_reason or terminal_reason:
-                    reached_max_turns = False
+            apply_result_payload(raw)
+elif os.environ["OUTPUT_FORMAT"] == "stream-json":
+    result_payload = None
+    for line in stdout_text.splitlines():
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+        if isinstance(event, dict) and str(event.get("type", "")).lower() == "result":
+            result_payload = event
+    if isinstance(result_payload, dict):
+        apply_result_payload(result_payload)
 
 if reached_max_turns == "unknown":
     reached_max_turns = False if stdout_text or stderr_text else "unknown"

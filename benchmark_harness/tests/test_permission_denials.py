@@ -44,6 +44,30 @@ def test_extract_from_stdout_ignores_non_json_text():
     assert extract_from_stdout("plain text stdout") == {}
 
 
+def test_extract_from_stdout_handles_stream_json_result_events():
+    stdout = "\n".join(
+        [
+            json.dumps({"type": "system", "message": "hello"}),
+            json.dumps(
+                {
+                    "type": "result",
+                    "num_turns": 4,
+                    "permission_denials": [
+                        {"tool_name": "Bash"},
+                        {"tool_name": "Read"},
+                    ],
+                }
+            ),
+        ]
+    )
+
+    assert extract_from_stdout(stdout) == {
+        "permission_denials_count": 2,
+        "permission_denied_tools": ["Bash", "Read"],
+        "permission_denied_bash_count": 1,
+    }
+
+
 def test_annotate_metrics_file_adds_permission_fields_without_copying_tool_inputs(tmp_path: Path):
     run_dir = tmp_path / "benchmark-data" / "runs" / "run-1"
     run_dir.mkdir(parents=True)

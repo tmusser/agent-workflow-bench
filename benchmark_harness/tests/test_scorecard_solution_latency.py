@@ -38,7 +38,22 @@ def base_files(run_id: str) -> dict[str, str]:
         )
         + "\n",
         f"benchmark-data/runs/{run_id}/solution_latency.json": json.dumps(
-            {"first_green_turn": 7, "permission_denials_after_first_green": 3},
+            {
+                "first_green_turn": 7,
+                "first_functional_green_turn": 7,
+                "first_functional_green_wall_seconds": 7.5,
+                "first_bench_ready_green_turn": 9,
+                "first_bench_ready_green_wall_seconds": 9.5,
+                "turns_after_first_green": 14,
+                "turns_after_first_functional_green": 14,
+                "turns_after_first_bench_ready_green": 12,
+                "permission_denials_after_first_green": 3,
+                "checkpoint_count": 4,
+                "checkpoint_eval_errors": [],
+                "observable": True,
+                "source": "stream_json",
+                "note": "computed_by_harness",
+            },
             indent=2,
         )
         + "\n",
@@ -65,10 +80,18 @@ def test_scorecard_includes_solution_latency_fields(tmp_path: Path):
     row = scorecard.score_bundle(bundle)
 
     assert row["initial_actual_turns"] == 21
+    assert row["solution_latency_observable"] is True
+    assert row["solution_latency_source"] == "stream_json"
     assert row["initial_solution_latency_observable"] is True
     assert row["initial_first_green_turn"] == 7
+    assert row["initial_first_functional_green_turn"] == 7
+    assert row["initial_first_functional_green_wall_seconds"] == 7.5
+    assert row["initial_first_bench_ready_green_turn"] == 9
+    assert row["initial_first_bench_ready_green_wall_seconds"] == 9.5
     assert row["initial_turns_after_first_green"] == 14
+    assert row["initial_turns_after_first_functional_green"] == 14
+    assert row["initial_turns_after_first_bench_ready_green"] == 12
     assert row["initial_permission_denials_after_first_green"] == 3
-    assert row["initial_solution_latency_source"] == "solution_latency.json"
+    assert row["initial_solution_latency_source"] == "stream_json"
     assert row["full_resume_solution_latency_note"] == "phase_not_run"
     assert row["stripped_resume_solution_latency_note"] == "phase_not_run"

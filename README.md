@@ -59,8 +59,8 @@ For inferred skill evidence summaries, see [docs/skill-routing-summary.md](docs/
 
 - The visible task fixes a duplicated-join churn bug.
 - The benchmark checks whether the fix is durable across resume contexts and whether the agent leaves useful verification evidence.
-- The current Haiku rerun is an artifact/resume bridge smoke: A r2 and E r3 both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E r3 produced `VERIFY.md` and validator-compatible `SKILL_RUNTIME_PROOF.md`; stripped resume removed those artifacts and still passed. Because the current print-mode harness only evaluates after Claude exits, first-green latency is unobservable when runs terminate at `max_turns`. E r3 was cheaper/faster at the same capped turn budget, but this remains suggestive audit/resume evidence, not broad superiority evidence.
-- The current Haiku rerun is an artifact/resume bridge smoke: A r2 and E r3 both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E r3 produced `VERIFY.md` and validator-compatible `SKILL_RUNTIME_PROOF.md`; stripped resume removed those artifacts and still passed. E was cheaper/faster in this sample, but both arms hit `max_turns` in every phase, so treat this as audit/resume evidence, not broad superiority evidence.
+- The observer-aware Haiku rerun validates the solution-latency checkpoint path and artifact gate. A baseline passed public + hidden checks across initial, full-resume, and stripped-resume phases with observable `stream_json` first-green telemetry. The E arm became functionally green in the initial phase but failed the bench-ready artifact gate because `SKILL_RUNTIME_PROOF.md` was missing, so E full/stripped resume phases were not run. Treat this as artifact-gate evidence, not an E-arm success or broad superiority claim.
+- Efficiency claims require observable first-green telemetry. Runs without per-turn or checkpoint evidence remain final-only and must not be used to infer first-green latency.
 
 ### Task 5: Fake Data Campaign Lift Trust
 
@@ -100,7 +100,7 @@ Proven by the current pilot:
 - Task 2: in one Haiku sample, E had slightly better aggregate run metrics and produced validator-compatible proof artifacts, but the task is still too small for broad performance claims.
 - Task 3: the refund-grain bridge smoke works; both A and E solve the entity-count versus event-count bug across initial/full/stripped phases.
 - Task 3: in one Haiku sample, E was cheaper/faster overall and had fewer Bash denials, while A had cleaner terminal completions in initial/full contexts. This is audit evidence, not an E-arm superiority claim.
-- Task 4: the artifact/resume bridge smoke works; A r2 and E r3 both pass across initial/full/stripped phases, and E r3 leaves validator-compatible proof artifacts.
+- Task 4: the observer-aware bridge smoke validates the checkpoint path and artifact gate. A baseline passed initial/full/stripped with observable first-green telemetry; E became functionally green in initial but failed bench-ready artifact compliance because `SKILL_RUNTIME_PROOF.md` was missing, so E resume phases were not run.
 - Task 5: the public-pass/hidden-fail data-trust trap works.
 - Task 7: sharper invalidation around compatibility seams and test integrity is more useful than heavier ceremony.
 - The E arm can be runtime-proven and artifact-producing.
@@ -121,7 +121,7 @@ This table reflects the current pilot, not a universal result set.
 | Task 1 | piloted smoke | A and lighter E both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E is viable and artifact-producing, but not clearly more efficient in aggregate. |
 | Task 2 | piloted bridge smoke | A and E both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E is artifact-producing and slightly better on aggregate run metrics in this sample; treat as suggestive only. |
 | Task 3 | piloted bridge smoke | A and E both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E is artifact-producing and cheaper/faster overall in this sample, while A has cleaner terminal completions in the initial and full-resume phases. |
-| Task 4 | piloted bridge smoke | A r2 and E r3 both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E r3 is artifact-producing with `VERIFY.md` and validator-compatible `SKILL_RUNTIME_PROOF.md`; stripped resume removes those artifacts and still passes. E is cheaper/faster in this sample, but all phases hit `max_turns`; treat as suggestive audit/resume evidence only. |
+| Task 4 | observer-piloted / mixed | A baseline passed initial/full/stripped with observable first-green telemetry. E became functionally green in initial but failed bench-ready artifact compliance because `SKILL_RUNTIME_PROOF.md` was missing; E resume phases were not run. This validates the observer and artifact gate, not broad skill superiority. |
 | Task 5 | piloted negative control | Public checks could pass while hidden denominator/leakage traps still failed; clearer audit trails helped inspection but did not guarantee correctness. |
 | Task 6 | under construction | Activation metric migration harness exists but should not be advertised as a completed pilot result yet. |
 | Task 7 | piloted / hardened | Stronger settings saturated on behavior; weaker settings exposed API seam and test-integrity failures. The hardening lesson was sharper invalidation, not more process. |
@@ -138,8 +138,8 @@ These rows are examples of the current scorecard shape. They are not a complete 
 | Task 2 | E ai-engineering-skills | green / skill proof + artifacts | active | Functional pass with `VERIFY.md` and validator-compatible `SKILL_RUNTIME_PROOF.md`; slightly better aggregate run metrics in this single sample. |
 | Task 3 | A baseline | green | inactive | Functional pass across initial/full/stripped on a refund-grain bridge task; initial and full-resume completed cleanly, but stripped hit `max_turns`. |
 | Task 3 | E ai-engineering-skills | green / skill proof + artifacts | active | Functional pass with `VERIFY.md` and validator-compatible `SKILL_RUNTIME_PROOF.md`; cheaper/faster overall in this sample, with fewer Bash denials but noisier terminal reasons. |
-| Task 4 | A baseline | green | inactive | Functional pass across initial/full/stripped on the impossible-churn bugfix. |
-| Task 4 | E ai-engineering-skills | green / skill proof + artifacts | active | Functional pass with `VERIFY.md` and validator-compatible `SKILL_RUNTIME_PROOF.md`; stripped resume removes those artifacts and still passes. Cheaper/faster in this sample, but not a broad superiority claim. |
+| Task 4 | A baseline | green | inactive | Functional pass across initial/full/stripped on the impossible-churn bugfix with observable first-green telemetry. |
+| Task 4 | E ai-engineering-skills | initial green / bench-ready fail | inactive | Functionally green in initial, but bench-ready artifact compliance failed because `SKILL_RUNTIME_PROOF.md` was missing; E resume phases were not run. |
 | Task 5 | A baseline | initial_fail / hidden fail | inactive | Expected negative result from the public-pass / hidden-fail trap. |
 | Task 5 | E ai-engineering-skills | initial_fail / skill proof + artifacts / hidden fail | inactive | Skill proof and workflow artifacts are present, but the hidden trust gate still fails. |
 | Task 7 | B / E stronger settings | behavior saturated | varies | Strong prompting and skill routing both reached the narrow behavior in stronger settings. |
@@ -200,7 +200,7 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 - Tasks 1-3 are low-ceremony smoke / bridge tasks and should not be read as evidence of broad skill superiority.
 - Task 5 yellow rows are useful negative results, not broken scorecard rows.
 - Generated artifacts, bundles, and local caches should stay out of source control.
-- Current full-auto runs collect verification only after Claude exits, so `terminal_reason=max_turns` does not imply the solution first became correct at the final turn. First-green latency requires per-turn or checkpoint evaluation.
+- Runs without per-turn or checkpoint evidence remain final-only, so `terminal_reason=max_turns` does not imply the solution first became correct at the final turn. Efficiency claims require observable first-green telemetry.
 
 ## 9. Roadmap
 

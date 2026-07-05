@@ -90,8 +90,8 @@ set -e
 # permission_denials. Keep only metadata counts in run_metrics.json.
 python -m benchmark_harness.permission_denials annotate --root "$ROOT_DIR" >/dev/null 2>&1 || true
 # Best-effort post-processing: collected phases can now carry explicit
-# solution_latency.json summaries. Current runs remain first-green-unobservable
-# unless future per-turn traces are present.
+# solution_latency.json summaries, and the print-mode helper may emit
+# checkpoint traces when stream-json is available.
 if [[ -n "${RUN_ID:-}" ]]; then
   python -m benchmark_harness.emit_solution_latency annotate --root "$ROOT_DIR" --run-id "$RUN_ID" >/dev/null 2>&1 || true
 fi
