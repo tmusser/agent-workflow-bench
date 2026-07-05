@@ -38,5 +38,15 @@ exec "$PYTHON_RESOLVED" "\$@"
 EOF_SHIM
 cp "$SHIM_DIR/python" "$SHIM_DIR/python3"
 chmod +x "$SHIM_DIR/python" "$SHIM_DIR/python3"
+export PATH="$SHIM_DIR:$PATH"
 
-PATH="$SHIM_DIR:$PATH" exec "$ROOT_DIR/tools/pilot_smoke_legacy.sh" "$@"
+set +e
+"$ROOT_DIR/tools/pilot_smoke_legacy.sh" "$@"
+status=$?
+set -e
+
+# Best-effort post-processing: Claude JSON output may include structured
+# permission_denials. Keep only metadata counts in run_metrics.json.
+python -m benchmark_harness.permission_denials annotate --root "$ROOT_DIR" >/dev/null 2>&1 || true
+
+exit "$status"
