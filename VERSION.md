@@ -30,5 +30,7 @@ Not included:
 
 Notes:
 
-- The repo keeps a conservative claim boundary: it is not a proof of broad agent superiority.
-- PyPI publishing is deferred until the repo exposes a stable CLI and package-data story.
+- The repo keeps a conservative claim boundary: it is not a proof of broad agent
+  superiority.
+- PyPI publishing is deferred until the repo exposes a stable CLI and
+  package-data story.
