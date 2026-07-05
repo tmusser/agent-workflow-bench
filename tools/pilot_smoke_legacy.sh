@@ -27,6 +27,7 @@ STRIPPED_REPO="benchmark-data/resume-workspaces/${RUN_ID}/stripped/repo"
 FULL_OUT="benchmark-data/resume-runs/${RUN_ID}_full"
 STRIPPED_OUT="benchmark-data/resume-runs/${RUN_ID}_stripped"
 FRESH_PROMPT="${FRESH_SESSION_PROMPT:-$FRESH_SESSION_PROMPT_DEFAULT}"
+FINALIZER_DIRNAME="finalizer"
 
 CLAUDE_CMD="${CLAUDE_CMD:-claude}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-sonnet}"
@@ -35,9 +36,10 @@ CLAUDE_MAX_TURNS="${CLAUDE_MAX_TURNS:-20}"
 CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-dangerously-skip-permissions}"
 CLAUDE_PLUGIN_DIR="${CLAUDE_PLUGIN_DIR:-}"
 CLAUDE_OUTPUT_FORMAT="${CLAUDE_OUTPUT_FORMAT:-text}"
+ENABLE_SKILL_RUNTIME_FINALIZER="${ENABLE_SKILL_RUNTIME_FINALIZER:-0}"
 # Tip: the helper prefers stream-json when the Claude CLI supports it and falls
 # back to JSON so run_metrics.json can still capture turn and usage metadata.
-# Tip: set CLAUDE_OUTPUT_FORMAT=json to force the fallback JSON output path.
+# Tip: set CLAUDE_OUTPUT_FORMAT=json to force the fallback JSON / mtime_polling path.
 
 usage() {
   cat <<EOF_USAGE
@@ -63,7 +65,8 @@ Default task:   ${TASK_SLUG} (${TASK_ID})
 Default RUN_ID: ${RUN_ID}
 Default arm:    ${ARM_SLUG}
 Claude default: ${CLAUDE_CMD} --model ${CLAUDE_MODEL} --effort ${CLAUDE_EFFORT} --max-turns ${CLAUDE_MAX_TURNS} ${CLAUDE_PERMISSION_MODE}
-Tip: the helper auto-detects stream-json support and falls back to JSON for run metrics.
+Tip: if CLAUDE_OUTPUT_FORMAT=json is unset and the Claude CLI supports stream-json, the helper uses stream-json / stream_json observation. Setting CLAUDE_OUTPUT_FORMAT=json forces JSON output and mtime_polling observation.
+Tip: set ENABLE_SKILL_RUNTIME_FINALIZER=1 to enable the separate E-arm audit finalizer.
 
 Override examples:
   CLAUDE_MODEL=sonnet CLAUDE_EFFORT=low ./tools/pilot_smoke.sh auto-a-r1
@@ -349,7 +352,7 @@ run_claude_print() {
   local actual_output_format observer_mode
   actual_output_format="json"
   observer_mode="mtime_polling"
-  if claude_supports_stream_json; then
+  if [[ "${CLAUDE_OUTPUT_FORMAT:-}" != "json" ]] && claude_supports_stream_json; then
     actual_output_format="stream-json"
     observer_mode="stream_json"
   fi
@@ -600,6 +603,56 @@ metrics_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encod
 PY
 }
 
+run_skill_runtime_finalizer() {
+  local repo="$1"
+  local out_dir="$2"
+  local phase="$3"
+  local main_verify_exit="$4"
+  local main_hidden_exit="$5"
+
+  require_root
+  mkdir -p "$out_dir"
+
+  if [[ "$ARM_SLUG" != E-* || "$ENABLE_SKILL_RUNTIME_FINALIZER" != "1" ]]; then
+    return 0
+  fi
+
+  local root_dir finalizer_cmd
+  root_dir="$(pwd)"
+  finalizer_cmd=(
+    python -m benchmark_harness.skill_runtime_finalizer run
+    --workspace-root "$repo"
+    --run-dir "$out_dir"
+    --run-id "$RUN_ID"
+    --task-slug "$TASK_SLUG"
+    --arm-slug "$ARM_SLUG"
+    --phase "$phase"
+    --prompt-file "${root_dir}/benchmark_harness/protocols/SKILL_RUNTIME_FINALIZER_PROMPT.md"
+    --claude-cmd "$CLAUDE_CMD"
+    --model "$CLAUDE_MODEL"
+    --effort "$CLAUDE_EFFORT"
+    --max-turns "$CLAUDE_MAX_TURNS"
+    --permission-mode "$CLAUDE_PERMISSION_MODE"
+    --hidden-evaluator-module "$HIDDEN_EVALUATOR_MODULE"
+    --main-verify-exit "$main_verify_exit"
+    --main-hidden-exit "$main_hidden_exit"
+  )
+  if [[ -n "${CLAUDE_PLUGIN_DIR:-}" ]]; then
+    finalizer_cmd+=(--plugin-dir "$CLAUDE_PLUGIN_DIR")
+  fi
+
+  set +e
+  "${finalizer_cmd[@]}"
+  local finalizer_exit=$?
+  set -e
+
+  echo "Finalizer (${phase}) exit: ${finalizer_exit}"
+  if [[ "$finalizer_exit" -ne 0 ]]; then
+    echo "WARNING: E-arm finalizer returned nonzero for ${phase}. See ${out_dir}/summary.json."
+  fi
+  return "$finalizer_exit"
+}
+
 run_initial_claude() {
   require_root
   run_claude_print "$WORK" "$RUN_DIR/prompt.md" "$RUN_DIR" "initial"
@@ -623,6 +676,14 @@ collect_initial() {
   local hidden_code=$?
   set -e
 
+  local finalizer_exit=0
+  if [[ "$ARM_SLUG" == E-* && "$ENABLE_SKILL_RUNTIME_FINALIZER" == "1" ]]; then
+    set +e
+    run_skill_runtime_finalizer "$WORK" "$RUN_DIR/$FINALIZER_DIRNAME" "initial" "$verify_code" "$hidden_code"
+    finalizer_exit=$?
+    set -e
+  fi
+
   git -C "$WORK" status --short > "$RUN_DIR/git_status_final.txt"
   git -C "$WORK" diff --stat HEAD > "$RUN_DIR/diff_stat.txt"
   git -C "$WORK" diff HEAD > "$RUN_DIR/diff.patch"
@@ -638,6 +699,24 @@ collect_initial() {
   cat "$RUN_DIR/diff_stat.txt" || true
   echo
 
+  if [[ "$ARM_SLUG" == E-* && "$ENABLE_SKILL_RUNTIME_FINALIZER" == "1" && "$finalizer_exit" -ne 0 ]]; then
+    cat > "$RUN_DIR/INITIAL_NOT_READY.txt" <<EOF_NOT_READY
+Initial run is not ready for resume testing.
+
+verify_exit=${verify_code}
+hidden_evaluator_exit=${hidden_code}
+finalizer_exit=${finalizer_exit}
+diff_bytes=${diff_bytes}
+skill_runtime_proof=invalid
+
+E arm finalizer failed.
+Do not count this as a skill-runtime-proven run.
+EOF_NOT_READY
+    echo "STOP: E arm finalizer failed."
+    echo "See: $RUN_DIR/INITIAL_NOT_READY.txt"
+    exit 1
+  fi
+
   if [[ "$ARM_SLUG" != "A-baseline" ]]; then
     if [[ "$ARM_SLUG" == E-* ]]; then
       if [[ ! -f "$WORK/SKILL_RUNTIME_PROOF.md" ]]; then
@@ -646,6 +725,7 @@ Initial run is not ready for resume testing.
 
 verify_exit=${verify_code}
 hidden_evaluator_exit=${hidden_code}
+finalizer_exit=${finalizer_exit}
 diff_bytes=${diff_bytes}
 skill_runtime_proof=missing
 
@@ -665,6 +745,7 @@ Initial run is not ready for resume testing.
 
 verify_exit=${verify_code}
 hidden_evaluator_exit=${hidden_code}
+finalizer_exit=${finalizer_exit}
 diff_bytes=${diff_bytes}
 skill_runtime_proof=invalid
 
@@ -688,6 +769,7 @@ Initial run is not ready for resume testing.
 
 verify_exit=${verify_code}
 hidden_evaluator_exit=${hidden_code}
+finalizer_exit=${finalizer_exit}
 diff_bytes=${diff_bytes}
 
 Do not create/use full or stripped resume workspaces from this run unless intentionally testing failure recovery.
@@ -772,6 +854,14 @@ collect_resume_condition() {
   local hidden_code=$?
   set -e
 
+  local finalizer_exit=0
+  if [[ "$ARM_SLUG" == E-* && "$ENABLE_SKILL_RUNTIME_FINALIZER" == "1" ]]; then
+    set +e
+    run_skill_runtime_finalizer "$repo" "$out/$FINALIZER_DIRNAME" "${condition}_resume" "$verify_code" "$hidden_code"
+    finalizer_exit=$?
+    set -e
+  fi
+
   if [[ "$TASK_SLUG" == "07-dashboard-export-scope-pressure" ]]; then
     cp "$out/hidden_evaluator.txt" "$out/task7_hidden_evaluator.json" 2>/dev/null || true
   fi
@@ -785,6 +875,9 @@ collect_resume_condition() {
 
   echo "${condition} resume VERIFY.sh exit: ${verify_code}"
   echo "${condition} resume hidden evaluator exit: ${hidden_code}"
+  if [[ "$ARM_SLUG" == E-* && "$ENABLE_SKILL_RUNTIME_FINALIZER" == "1" ]]; then
+    echo "${condition} resume finalizer exit: ${finalizer_exit}"
+  fi
   echo "${condition} resume diff stat:"
   cat "$out/diff_stat.txt" || true
   echo
@@ -848,6 +941,7 @@ status_run() {
   echo "RUN_ID=$RUN_ID"
   echo "ARM_SLUG=$ARM_SLUG"
   echo "CLAUDE=${CLAUDE_CMD} --model ${CLAUDE_MODEL} --effort ${CLAUDE_EFFORT} --max-turns ${CLAUDE_MAX_TURNS} ${CLAUDE_PERMISSION_MODE}"
+  echo "ENABLE_SKILL_RUNTIME_FINALIZER=$ENABLE_SKILL_RUNTIME_FINALIZER"
   echo
   for f in \
     "$RUN_DIR/prompt.md" \
@@ -858,18 +952,21 @@ status_run() {
     "$RUN_DIR/verification_final.txt" \
     "$RUN_DIR/hidden_evaluator_final.txt" \
     "$RUN_DIR/diff.patch" \
+    "$RUN_DIR/finalizer/summary.json" \
     "$FULL_OUT/claude_stdout.txt" \
     "$FULL_OUT/claude_stderr.txt" \
     "$FULL_OUT/claude_exit_code.txt" \
     "$FULL_OUT/run_provenance.json" \
     "$FULL_OUT/FRESH_SESSION_REVIEW.md" \
     "$FULL_OUT/task7_hidden_evaluator.json" \
+    "$FULL_OUT/finalizer/summary.json" \
     "$STRIPPED_OUT/claude_stdout.txt" \
     "$STRIPPED_OUT/claude_stderr.txt" \
     "$STRIPPED_OUT/claude_exit_code.txt" \
     "$STRIPPED_OUT/run_provenance.json" \
     "$STRIPPED_OUT/FRESH_SESSION_REVIEW.md" \
-    "$STRIPPED_OUT/task7_hidden_evaluator.json"; do
+    "$STRIPPED_OUT/task7_hidden_evaluator.json" \
+    "$STRIPPED_OUT/finalizer/summary.json"; do
     if [[ -e "$f" ]]; then
       echo "✓ $f"
     else

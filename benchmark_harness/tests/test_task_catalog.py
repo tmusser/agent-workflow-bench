@@ -137,6 +137,12 @@ def test_pilot_smoke_entrypoint_resolves_python_before_legacy_helper():
     assert 'FRESH_PROMPT="${FRESH_SESSION_PROMPT:-$FRESH_SESSION_PROMPT_DEFAULT}"' in legacy
     assert 'RESUME_HIDDEN_EVALUATOR_MODULE="${RESUME_HIDDEN_EVALUATOR_MODULE:-$RESUME_HIDDEN_EVALUATOR_MODULE_DEFAULT}"' in legacy
     assert "CLAUDE_OUTPUT_FORMAT=json" in legacy
+    assert 'if [[ "${CLAUDE_OUTPUT_FORMAT:-}" != "json" ]] && claude_supports_stream_json;' in legacy
+    assert "stream-json / stream_json observation" in legacy
+    assert "forces JSON output and mtime_polling observation" in legacy
+    assert "ENABLE_SKILL_RUNTIME_FINALIZER" in legacy
+    assert "benchmark_harness.skill_runtime_finalizer" in legacy
+    assert "SKILL_RUNTIME_FINALIZER_PROMPT.md" in legacy
     assert "run_metrics.json" in legacy
     assert 'if [[ "$ARM_SLUG" == E-* ]]; then' in legacy
     assert 'Non-baseline arm did not produce SKILL_RUNTIME_PROOF.md.' not in legacy

@@ -177,6 +177,57 @@ def base_resume_files(run_id: str, *, tag: str) -> dict[str, str]:
     }
 
 
+def base_finalizer_summary(
+    *,
+    ran: bool,
+    valid: bool,
+    trigger_reason: str,
+    actual_turns: int | None = None,
+    wall_seconds: float | None = None,
+    total_cost_usd: float | None = None,
+    validator_exit: int | None = None,
+    verify_after_exit: int | None = None,
+    hidden_after_exit: int | None = None,
+    functional_files_changed: bool = False,
+    forbidden_files_changed: list[str] | None = None,
+    allowed_files_changed: list[str] | None = None,
+    bench_ready_after_finalizer: bool = False,
+    bench_ready_via_finalizer: bool = False,
+    created_skill_runtime_proof: bool = False,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "finalizer_enabled": True,
+        "finalizer_ran": ran,
+        "finalizer_valid": valid,
+        "trigger_reason": trigger_reason,
+        "main_functional_green": True,
+        "main_verify_exit": 0,
+        "main_hidden_exit": 0,
+        "proof_present_before": False,
+        "proof_valid_before": False,
+        "verify_present_before": True,
+        "proof_present_after": created_skill_runtime_proof or valid,
+        "proof_valid_after": valid,
+        "verify_present_after": True,
+        "created_skill_runtime_proof": created_skill_runtime_proof,
+        "validator_exit": validator_exit if validator_exit is not None else (0 if valid else 1),
+        "verify_after_exit": verify_after_exit if verify_after_exit is not None else (0 if valid else 1),
+        "hidden_after_exit": hidden_after_exit if hidden_after_exit is not None else (0 if valid else 1),
+        "bench_ready_after_finalizer": bench_ready_after_finalizer,
+        "bench_ready_via_finalizer": bench_ready_via_finalizer,
+        "functional_files_changed": functional_files_changed,
+        "forbidden_files_changed": forbidden_files_changed or [],
+        "allowed_files_changed": allowed_files_changed or [],
+        "actual_turns": actual_turns,
+        "wall_clock_seconds": wall_seconds,
+        "total_cost_usd": total_cost_usd,
+        "claude_exit_code": 0 if ran else None,
+        "output_format": "json",
+        "proof_validation_issues": [] if valid else ["missing SKILL_RUNTIME_PROOF.md"],
+    }
+
+
 def test_scorecard_summarizes_baseline_bundle(tmp_path: Path):
     run_id = "v04pilot_04-bugfix_A_r1"
     files = {
@@ -224,8 +275,49 @@ def test_scorecard_detects_artifacts_and_skill_proof(tmp_path: Path):
     run_id = "v04pilot_04-bugfix_E_r3"
     files = {
         **base_initial_run_files(run_id, skill_runtime_proof=valid_skill_runtime_proof(run_id)),
+        f"benchmark-data/runs/{run_id}/finalizer/summary.json": json.dumps(
+            base_finalizer_summary(
+                ran=True,
+                valid=True,
+                trigger_reason="functional_green_missing_or_invalid_skill_runtime_proof",
+                actual_turns=6,
+                wall_seconds=12.34,
+                total_cost_usd=0.0187,
+                validator_exit=0,
+                verify_after_exit=0,
+                hidden_after_exit=0,
+                functional_files_changed=False,
+                forbidden_files_changed=[],
+                allowed_files_changed=["SKILL_RUNTIME_PROOF.md"],
+                bench_ready_after_finalizer=True,
+                bench_ready_via_finalizer=True,
+                created_skill_runtime_proof=True,
+            ),
+            indent=2,
+        )
+        + "\n",
         **base_resume_files(run_id, tag="full"),
+        f"benchmark-data/resume-runs/{run_id}_full/finalizer/summary.json": json.dumps(
+            base_finalizer_summary(
+                ran=False,
+                valid=True,
+                trigger_reason="proof_already_valid",
+                bench_ready_after_finalizer=True,
+            ),
+            indent=2,
+        )
+        + "\n",
         **base_resume_files(run_id, tag="stripped"),
+        f"benchmark-data/resume-runs/{run_id}_stripped/finalizer/summary.json": json.dumps(
+            base_finalizer_summary(
+                ran=False,
+                valid=True,
+                trigger_reason="proof_already_valid",
+                bench_ready_after_finalizer=True,
+            ),
+            indent=2,
+        )
+        + "\n",
         f"benchmark-data/workspaces/{run_id}/repo/TASK.md": "# task\n",
         f"benchmark-data/workspaces/{run_id}/repo/BUGS.md": "bugs\n",
         f"benchmark-data/workspaces/{run_id}/repo/VERIFY.md": "verify\n",
@@ -256,6 +348,27 @@ def test_scorecard_detects_artifacts_and_skill_proof(tmp_path: Path):
     assert row["stripped_removed_artifacts"] == "BUGS.md;VERIFY.md;HANDOFF.md;SKILL_RUNTIME_PROOF.md"
     assert row["artifact_mechanism_active"] is True
     assert row["agent_side_verification_claim"] == "claimed_verified"
+    assert row["initial_finalizer_enabled"] is True
+    assert row["initial_finalizer_ran"] is True
+    assert row["initial_finalizer_valid"] is True
+    assert row["initial_finalizer_trigger_reason"] == "functional_green_missing_or_invalid_skill_runtime_proof"
+    assert row["initial_finalizer_actual_turns"] == 6
+    assert row["initial_finalizer_wall_seconds"] == 12.34
+    assert row["initial_finalizer_total_cost_usd"] == 0.0187
+    assert row["initial_finalizer_validator_exit"] == 0
+    assert row["initial_finalizer_verify_after_exit"] == 0
+    assert row["initial_finalizer_hidden_after_exit"] == 0
+    assert row["initial_finalizer_functional_files_changed"] is False
+    assert row["initial_finalizer_forbidden_files_changed"] == []
+    assert row["initial_finalizer_allowed_files_changed"] == ["SKILL_RUNTIME_PROOF.md"]
+    assert row["initial_finalizer_bench_ready_after_finalizer"] is True
+    assert row["initial_finalizer_bench_ready_via_finalizer"] is True
+    assert row["initial_finalizer_created_skill_runtime_proof"] is True
+    assert row["full_resume_finalizer_ran"] is False
+    assert row["stripped_resume_finalizer_ran"] is False
+    assert row["finalizer_total_turns"] == 6
+    assert row["finalizer_total_wall_seconds"] == 12.34
+    assert row["finalizer_total_cost_usd"] == 0.0187
 
 
 def test_scorecard_claims_blocked_when_repo_artifacts_say_sandbox_blocked(tmp_path: Path):
