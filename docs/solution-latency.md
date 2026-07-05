@@ -1,13 +1,14 @@
 # Solution Latency
 
-Semantic terminal state answers whether the final workspace was correct despite a
-raw terminal shape such as `max_turns`. Solution latency asks a sharper question:
+Semantic terminal state answers whether the final workspace was correct
+against a raw terminal shape such as `max_turns`. Solution latency asks a
+sharper question:
 
 > On which turn did the run first become public + hidden green?
 
-That requires per-turn evidence. Existing bundles usually contain only final
-workspace state and final verification results, so the scorecard must not invent a
-first-green turn from final logs alone.
+That requires per-turn evidence. Existing bundles usually contain only
+final workspace state and final verification results, so the scorecard must not
+invent a first-green turn from final logs alone.
 
 ## Scorecard Fields
 
@@ -32,7 +33,9 @@ Phases use these prefixes:
 The pilot wrapper now runs a best-effort post-processing step:
 
 ```bash
-python -m benchmark_harness.emit_solution_latency annotate --root "$ROOT_DIR" --run-id "$RUN_ID"
+python -m benchmark_harness.emit_solution_latency annotate \
+  --root "$ROOT_DIR" \
+  --run-id "$RUN_ID"
 ```
 
 For each collected phase, this writes `solution_latency.json` into that phase's
