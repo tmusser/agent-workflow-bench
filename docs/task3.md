@@ -53,31 +53,28 @@ values:
 
 | Arm | Phase | Public + hidden | Terminal reason | Turns | Cost USD | Wall seconds | Bash denials |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| A baseline | initial | pass | max_turns | 21 | 0.1210224 | 55.860 | 8 |
-| A baseline | full resume | pass | max_turns | 21 | 0.1479584 | 91.587 | 6 |
-| A baseline | stripped resume | pass | completed | 22 | 0.1101387 | 63.406 | 2 |
-| E ai-engineering-skills | initial | pass | max_turns | 21 | 0.1351059 | 69.396 | 4 |
-| E ai-engineering-skills | full resume | pass | max_turns | 21 | 0.1438478 | 90.030 | 3 |
-| E ai-engineering-skills | stripped resume | pass | max_turns | 21 | 0.1293860 | 71.446 | 2 |
+| A baseline | initial | pass | completed | 19 | 0.1014737 | 57.992 | 4 |
+| A baseline | full resume | pass | completed | 25 | 0.1475606 | 104.811 | 4 |
+| A baseline | stripped resume | pass | max_turns | 21 | 0.1642659 | 90.325 | 6 |
+| E ai-engineering-skills | initial | pass | max_turns | 21 | 0.1229446 | 73.806 | 4 |
+| E ai-engineering-skills | full resume | pass | max_turns | 21 | 0.1208485 | 56.998 | 3 |
+| E ai-engineering-skills | stripped resume | pass | max_turns | 21 | 0.1431343 | 81.557 | 4 |
 
 Aggregate over initial/full/stripped:
 
 | Arm | Turns | Cost USD | Wall seconds | Bash denials | Completed phases |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| A baseline | 64 | 0.3791195 | 210.853 | 16 | 1 / 3 |
-| E ai-engineering-skills | 63 | 0.4083397 | 230.872 | 9 | 0 / 3 |
+| A baseline | 65 | 0.4133002 | 253.128 | 14 | 2 / 3 |
+| E ai-engineering-skills | 63 | 0.3869274 | 212.361 | 11 | 0 / 3 |
 
 Reading:
 
 - Task 3 adds another green smoke/bridge result and validates the refund-grain
   task design.
-- This sample is not an E-arm efficiency win: A was cheaper and faster overall.
-- E had fewer Bash denials and produced expected proof artifacts in initial/full
-  contexts, which is useful audit evidence but not enough to claim superiority.
-- A's stripped-resume `completed` terminal state should be interpreted carefully:
-  functional correctness was verified by the harness, while the agent's terminal
-  shape was closer to asking for verification than delivering a strong final
-  done/verified state.
+- E was cheaper/faster overall and had fewer Bash denials in this sample.
+- A had cleaner terminal completions in the initial and full-resume phases.
+- E produced expected proof artifacts in initial/full contexts, which is useful
+  audit evidence but not enough to claim broad superiority.
 - `max_turns` should not be read as functional failure when public and hidden
   verification pass. Functional result and terminal result should be interpreted
   separately.
