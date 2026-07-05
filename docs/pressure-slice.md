@@ -62,6 +62,8 @@ CLAUDE_PLUGIN_DIR="$PWD/local_plugins/ai-engineering-skills" \
 ./tools/pilot_smoke.sh --pressure-level high --pressure-seed $PRESSURE_SEED --context-window-tokens 32000 auto-a-r1
 ```
 
+Manual `--pressure-target-pct` values are fractions of the configured context window and are capped at `0.95` to prevent accidental runaway prompt generation.
+
 ## Summarize
 
 After the six runs finish, score the bundles and render the compact degradation table:
@@ -91,7 +93,9 @@ The summary table shows:
 - existing artifact/content indicators such as `initial_green`, `artifact_mechanism_active`, and `skill_runtime_proof_valid`;
 - existing latency/runtime indicators such as `initial_first_functional_green_turn`, `initial_first_bench_ready_green_turn`, and `finalizer_total_cost_usd`.
 
-If `max_context_utilization` is `?`, the run did not expose actual usage data. That is expected for some local runs and should not break the table.
+`estimated_context_utilization` is synthetic-pressure-only: `pressure_tokens_estimated / context_window_tokens`. It does not represent the full rendered prompt or all model-visible state.
+
+If `max_context_utilization` is `?`, the run did not expose actual usage data. That is expected for some local runs and should not break the table. When present, `max_context_utilization` is the best available actual input-token utilization for the configured context window.
 
 ## Safe Claims
 
