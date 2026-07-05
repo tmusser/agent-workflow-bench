@@ -25,6 +25,47 @@ resolve_python() {
   fi
 }
 
+rebuild_current_eval_bundle() {
+  local run_id="${RUN_ID:-}"
+  local bundle inputs candidate
+
+  if [[ -z "$run_id" ]]; then
+    return 0
+  fi
+
+  bundle="${run_id}-eval-bundle.tar.gz"
+  if [[ ! -f "$bundle" ]]; then
+    return 0
+  fi
+
+  inputs=()
+  for candidate in \
+    "benchmark-data/runs/${run_id}" \
+    "benchmark-data/resume-runs/${run_id}_full" \
+    "benchmark-data/resume-runs/${run_id}_stripped" \
+    "benchmark-data/workspaces/${run_id}/repo" \
+    "benchmark-data/resume-workspaces/${run_id}"
+  do
+    if [[ -e "$candidate" ]]; then
+      inputs+=("$candidate")
+    fi
+  done
+
+  if [[ "${#inputs[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  COPYFILE_DISABLE=1 tar \
+    --exclude='._*' \
+    --exclude='*/._*' \
+    --exclude='*/.venv' \
+    --exclude='*/__pycache__' \
+    --exclude='*/.pytest_cache' \
+    --exclude='*/.git' \
+    -czf "$bundle" \
+    "${inputs[@]}"
+}
+
 PYTHON_RESOLVED="$(resolve_python)"
 SHIM_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pilot-smoke-python.XXXXXX")"
 cleanup() {
@@ -48,5 +89,8 @@ set -e
 # Best-effort post-processing: Claude JSON output may include structured
 # permission_denials. Keep only metadata counts in run_metrics.json.
 python -m benchmark_harness.permission_denials annotate --root "$ROOT_DIR" >/dev/null 2>&1 || true
+# The legacy helper builds eval bundles before this wrapper post-processes
+# metrics, so refresh the current bundle when RUN_ID is explicit.
+rebuild_current_eval_bundle || true
 
 exit "$status"
