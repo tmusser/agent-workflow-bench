@@ -124,16 +124,22 @@ def test_task6_fresh_session_prompt_is_task_specific():
     assert "BUGFIX_REVIEW.md" not in text
 
 
-def test_pilot_smoke_allows_fresh_session_prompt_override():
-    script = Path(__file__).resolve().parents[2] / "tools" / "pilot_smoke.sh"
-    text = script.read_text(encoding="utf-8")
+def test_pilot_smoke_entrypoint_resolves_python_before_legacy_helper():
+    root = Path(__file__).resolve().parents[2]
+    entrypoint = (root / "tools" / "pilot_smoke.sh").read_text(encoding="utf-8")
+    legacy = (root / "tools" / "pilot_smoke_legacy.sh").read_text(encoding="utf-8")
 
-    assert 'FRESH_PROMPT="${FRESH_SESSION_PROMPT:-$FRESH_SESSION_PROMPT_DEFAULT}"' in text
-    assert 'RESUME_HIDDEN_EVALUATOR_MODULE="${RESUME_HIDDEN_EVALUATOR_MODULE:-$RESUME_HIDDEN_EVALUATOR_MODULE_DEFAULT}"' in text
-    assert "CLAUDE_OUTPUT_FORMAT=json" in text
-    assert "run_metrics.json" in text
-    assert 'if [[ "$ARM_SLUG" == E-* ]]; then' in text
-    assert 'Non-baseline arm did not produce SKILL_RUNTIME_PROOF.md.' not in text
+    assert "resolve_python()" in entrypoint
+    assert "python3.11" in entrypoint
+    assert "pilot_smoke_legacy.sh" in entrypoint
+    assert "PATH=\"$SHIM_DIR:$PATH\"" in entrypoint
+
+    assert 'FRESH_PROMPT="${FRESH_SESSION_PROMPT:-$FRESH_SESSION_PROMPT_DEFAULT}"' in legacy
+    assert 'RESUME_HIDDEN_EVALUATOR_MODULE="${RESUME_HIDDEN_EVALUATOR_MODULE:-$RESUME_HIDDEN_EVALUATOR_MODULE_DEFAULT}"' in legacy
+    assert "CLAUDE_OUTPUT_FORMAT=json" in legacy
+    assert "run_metrics.json" in legacy
+    assert 'if [[ "$ARM_SLUG" == E-* ]]; then' in legacy
+    assert 'Non-baseline arm did not produce SKILL_RUNTIME_PROOF.md.' not in legacy
 
 
 def test_task7_fresh_session_prompt_is_task_specific():
