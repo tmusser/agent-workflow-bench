@@ -37,6 +37,10 @@ CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-dangerously-skip-permissions}"
 CLAUDE_PLUGIN_DIR="${CLAUDE_PLUGIN_DIR:-}"
 CLAUDE_OUTPUT_FORMAT="${CLAUDE_OUTPUT_FORMAT:-text}"
 ENABLE_SKILL_RUNTIME_FINALIZER="${ENABLE_SKILL_RUNTIME_FINALIZER:-0}"
+PRESSURE_LEVEL="${PRESSURE_LEVEL:-none}"
+PRESSURE_SEED="${PRESSURE_SEED:-0}"
+CONTEXT_WINDOW_TOKENS="${CONTEXT_WINDOW_TOKENS:-}"
+PRESSURE_TARGET_PCT="${PRESSURE_TARGET_PCT:-}"
 # Tip: the helper prefers stream-json when the Claude CLI supports it and falls
 # back to JSON so run_metrics.json can still capture turn and usage metadata.
 # Tip: set CLAUDE_OUTPUT_FORMAT=json to force the fallback JSON / mtime_polling path.
@@ -64,14 +68,17 @@ Usage:
 Default task:   ${TASK_SLUG} (${TASK_ID})
 Default RUN_ID: ${RUN_ID}
 Default arm:    ${ARM_SLUG}
+Pressure:       ${PRESSURE_LEVEL} (seed=${PRESSURE_SEED})
 Claude default: ${CLAUDE_CMD} --model ${CLAUDE_MODEL} --effort ${CLAUDE_EFFORT} --max-turns ${CLAUDE_MAX_TURNS} ${CLAUDE_PERMISSION_MODE}
 Tip: if CLAUDE_OUTPUT_FORMAT=json is unset and the Claude CLI supports stream-json, the helper uses stream-json / stream_json observation. Setting CLAUDE_OUTPUT_FORMAT=json forces JSON output and mtime_polling observation.
 Tip: set ENABLE_SKILL_RUNTIME_FINALIZER=1 to enable the separate E-arm audit finalizer.
+Tip: set --pressure-level low|medium|high to inject deterministic synthetic background context before the TASK section.
 
 Override examples:
   CLAUDE_MODEL=sonnet CLAUDE_EFFORT=low ./tools/pilot_smoke.sh auto-a-r1
   RUN_ID=v04pilot_04-bugfix_B_r1 ARM_SLUG=B-matt-pocock ./tools/pilot_smoke.sh init
   TASK_SLUG=05-fake-data-analysis TASK_ID=05-fake-data ARM_SLUG=E-ai-engineering-skills RUN_ID=v05pilot_05-fake-data_E_r1 ./tools/pilot_smoke.sh auto-a-r1
+  ./tools/pilot_smoke.sh --pressure-level medium --pressure-seed 7 --context-window-tokens 32000 init
 
 Manual flow:
   1) setup
@@ -90,6 +97,36 @@ Safety note:
   Full-auto uses Claude Code bypass flag by default. Use only inside disposable benchmark workspaces.
   Use only inside these disposable benchmark workspaces.
 EOF_USAGE
+}
+
+parse_cli_args() {
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pressure-level)
+        PRESSURE_LEVEL="$2"
+        shift 2
+        ;;
+      --pressure-seed)
+        PRESSURE_SEED="$2"
+        shift 2
+        ;;
+      --context-window-tokens)
+        CONTEXT_WINDOW_TOKENS="$2"
+        export CONTEXT_WINDOW_TOKENS
+        shift 2
+        ;;
+      --pressure-target-pct)
+        PRESSURE_TARGET_PCT="$2"
+        shift 2
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+  PARSED_ARGS=("${args[@]}")
 }
 
 require_root() {
@@ -127,6 +164,30 @@ NEXT MANUAL STEP
 3. Let the agent finish.
 4. Return to the benchmark root and run the next helper command.
 EOF_INSTRUCTIONS
+}
+
+context_pressure_field() {
+  local key="$1"
+  local path="$RUN_DIR/context_pressure.json"
+  python - "$path" "$key" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+key = sys.argv[2]
+if not path.exists():
+    print("")
+    raise SystemExit(0)
+data = json.loads(path.read_text(encoding="utf-8"))
+value = data.get(key, "")
+if value is None:
+    print("")
+elif isinstance(value, bool):
+    print("true" if value else "false")
+else:
+    print(value)
+PY
 }
 
 claude_permission_args() {
@@ -308,7 +369,12 @@ init_run() {
   python -m benchmark_harness.render_prompt \
     --arm-wrapper "$ARM_WRAPPER" \
     --task-prompt "$TASK_PROMPT" \
-    --out "$RUN_DIR/prompt.md"
+    --out "$RUN_DIR/prompt.md" \
+    --pressure-level "$PRESSURE_LEVEL" \
+    --pressure-seed "$PRESSURE_SEED" \
+    ${CONTEXT_WINDOW_TOKENS:+--context-window-tokens "$CONTEXT_WINDOW_TOKENS"} \
+    ${PRESSURE_TARGET_PCT:+--pressure-target-pct "$PRESSURE_TARGET_PCT"} \
+    --metadata-out "$RUN_DIR/context_pressure.json"
 
   copy_clipboard "$RUN_DIR/prompt.md"
   print_run_agent_instructions "$WORK" "$RUN_DIR/prompt.md"
@@ -372,6 +438,12 @@ print(time.time_ns())
 PY
 )"
 
+  local pressure_tokens_estimated estimated_context_utilization pressure_target_pct_arg context_window_tokens_value
+  pressure_tokens_estimated="$(context_pressure_field pressure_tokens_estimated)"
+  estimated_context_utilization="$(context_pressure_field estimated_context_utilization)"
+  pressure_target_pct_arg="$(context_pressure_field pressure_target_pct)"
+  context_window_tokens_value="$(context_pressure_field context_window_tokens)"
+
   python -m benchmark_harness.run_provenance \
     --out "${root_dir}/${out_dir}/run_provenance.json" \
     --root "$root_dir" \
@@ -386,7 +458,13 @@ PY
     --effort "$CLAUDE_EFFORT" \
     --max-turns "$CLAUDE_MAX_TURNS" \
     --permission-mode "$CLAUDE_PERMISSION_MODE" \
-    --output-format "$actual_output_format"
+    --output-format "$actual_output_format" \
+    --pressure-level "$PRESSURE_LEVEL" \
+    --pressure-seed "$PRESSURE_SEED" \
+    --pressure-tokens-estimated "${pressure_tokens_estimated:-0}" \
+    ${context_window_tokens_value:+--context-window-tokens "$context_window_tokens_value"} \
+    --estimated-context-utilization "${estimated_context_utilization:-0}" \
+    ${pressure_target_pct_arg:+--pressure-target-pct "$pressure_target_pct_arg"}
 
   local observer_cmd=(
     python -m benchmark_harness.solution_latency_observer run
@@ -545,6 +623,12 @@ if provenance_path.exists():
                 "task_prompt_sha256",
                 "resume_prompt_path",
                 "resume_prompt_sha256",
+                "pressure_level",
+                "pressure_seed",
+                "pressure_tokens_estimated",
+                "context_window_tokens",
+                "estimated_context_utilization",
+                "pressure_target_pct",
             ):
                 if provenance.get(key) is not None:
                     data[key] = provenance.get(key)
@@ -597,6 +681,17 @@ elif os.environ["OUTPUT_FORMAT"] == "stream-json":
 if reached_max_turns == "unknown":
     reached_max_turns = False if stdout_text or stderr_text else "unknown"
 data["reached_max_turns"] = reached_max_turns
+
+window_tokens = data.get("context_window_tokens")
+if isinstance(window_tokens, int) and window_tokens > 0:
+    input_tokens = None
+    for key in ("usage_input_tokens", "input_tokens", "prompt_tokens", "total_input_tokens"):
+        value = data.get(key)
+        if isinstance(value, int) and value > 0:
+            input_tokens = value
+            break
+    if input_tokens is not None:
+        data["max_context_utilization"] = round((input_tokens / window_tokens) * 100, 2)
 
 metrics_path.parent.mkdir(parents=True, exist_ok=True)
 metrics_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -942,9 +1037,14 @@ status_run() {
   echo "ARM_SLUG=$ARM_SLUG"
   echo "CLAUDE=${CLAUDE_CMD} --model ${CLAUDE_MODEL} --effort ${CLAUDE_EFFORT} --max-turns ${CLAUDE_MAX_TURNS} ${CLAUDE_PERMISSION_MODE}"
   echo "ENABLE_SKILL_RUNTIME_FINALIZER=$ENABLE_SKILL_RUNTIME_FINALIZER"
+  echo "PRESSURE_LEVEL=$PRESSURE_LEVEL"
+  echo "PRESSURE_SEED=$PRESSURE_SEED"
+  echo "CONTEXT_WINDOW_TOKENS=${CONTEXT_WINDOW_TOKENS:-default}"
+  echo "PRESSURE_TARGET_PCT=${PRESSURE_TARGET_PCT:-default}"
   echo
   for f in \
     "$RUN_DIR/prompt.md" \
+    "$RUN_DIR/context_pressure.json" \
     "$RUN_DIR/claude_stdout.txt" \
     "$RUN_DIR/claude_stderr.txt" \
     "$RUN_DIR/claude_exit_code.txt" \
@@ -1030,6 +1130,8 @@ auto_a_r1() {
   collect_stripped
 }
 
+parse_cli_args "$@"
+set -- "${PARSED_ARGS[@]}"
 cmd="${1:-}"
 case "$cmd" in
   setup) run_preflight_setup ;;

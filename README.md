@@ -165,6 +165,19 @@ RUN_ID=v01pilot_01-sla-boundary_A_r1 \
 ./tools/pilot_smoke.sh auto-a-r1
 ```
 
+Run the same harness under deterministic context pressure:
+
+```bash
+TASK_SLUG=04-impossible-churn \
+ARM_SLUG=A-baseline \
+RUN_ID=v04pilot_04-bugfix_A_pressure_r1 \
+./tools/pilot_smoke.sh --pressure-level medium --pressure-seed 7 --context-window-tokens 32000 init
+```
+
+The built-in pressure levels target a stable fraction of the configured context window:
+`none=0%`, `low=5%`, `medium=15%`, `high=35%`. An optional `--pressure-target-pct`
+override is available for manual experiments.
+
 Summarize deterministic artifact hygiene for a run:
 
 ```bash
@@ -182,6 +195,7 @@ For Task 2 details and run examples, see [docs/task2.md](docs/task2.md).
 For Task 3 details and run examples, see [docs/task3.md](docs/task3.md).
 For Task 5 details and run examples, see [docs/task5.md](docs/task5.md).
 For Task 7 details and run examples, see [docs/task7.md](docs/task7.md).
+For the pressure-slice workflow and summary table, see [docs/pressure-slice.md](docs/pressure-slice.md).
 
 ## 7. Scorecard
 
@@ -201,6 +215,7 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 - Task 5 yellow rows are useful negative results, not broken scorecard rows.
 - Generated artifacts, bundles, and local caches should stay out of source control.
 - Runs without per-turn or checkpoint evidence remain final-only, so `terminal_reason=max_turns` does not imply the solution first became correct at the final turn. Efficiency claims require observable first-green telemetry.
+- Context pressure measures degradation under constrained, cluttered context. It does not by itself establish broad model superiority; compare like-for-like tasks, arms, and pressure settings.
 
 ## 9. Roadmap
 

@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from benchmark_harness.context_pressure import estimate_tokens_from_chars
+
 SCHEMA_VERSION = 1
 TRUTHY = {"1", "true", "yes", "on"}
 SENSITIVE_KEY_PARTS = (
@@ -69,6 +71,13 @@ LLM_METRIC_KEYS = (
     "reasoning_tokens",
     "prompt_cache_hit_tokens",
     "prompt_cache_miss_tokens",
+    "pressure_level",
+    "pressure_seed",
+    "pressure_tokens_estimated",
+    "context_window_tokens",
+    "estimated_context_utilization",
+    "max_context_utilization",
+    "pressure_target_pct",
 )
 PROVENANCE_KEYS = (
     "requested_arm_slug",
@@ -83,6 +92,12 @@ PROVENANCE_KEYS = (
     "task_prompt_sha256",
     "resume_prompt_path",
     "resume_prompt_sha256",
+    "pressure_level",
+    "pressure_seed",
+    "pressure_tokens_estimated",
+    "context_window_tokens",
+    "estimated_context_utilization",
+    "pressure_target_pct",
 )
 KNOWN_ARTIFACTS = (
     "SPEC.md",
@@ -280,12 +295,6 @@ def context_window_config(env: Mapping[str, str] | None = None) -> tuple[int, st
     return DEFAULT_CONTEXT_WINDOW_TOKENS, "default"
 
 
-def estimate_tokens_from_chars(char_count: int) -> int:
-    if char_count <= 0:
-        return 0
-    return max(1, (char_count + 3) // 4)
-
-
 def context_pressure_status(used_pct: float) -> str:
     if used_pct >= 90:
         return "critical"
@@ -330,12 +339,33 @@ def _context_window_fields(
     root: Path,
     metrics: Mapping[str, Any],
     provenance: Mapping[str, Any],
+    pressure_metadata: Mapping[str, Any],
 ) -> dict[str, Any]:
     window_tokens, window_source = context_window_config()
+    for source in (metrics, provenance, pressure_metadata):
+        parsed = _positive_int(source.get("context_window_tokens"))
+        if parsed is not None:
+            window_tokens = parsed
+            window_source = "run_metadata"
+            break
     fields: dict[str, Any] = {
         "context_window_tokens": window_tokens,
         "context_window_source": window_source,
     }
+    for key in (
+        "pressure_level",
+        "pressure_seed",
+        "pressure_tokens_estimated",
+        "estimated_context_utilization",
+        "pressure_target_pct",
+    ):
+        value = metrics.get(key)
+        if value is None:
+            value = provenance.get(key)
+        if value is None:
+            value = pressure_metadata.get(key)
+        if value is not None:
+            fields[key] = value
 
     used_tokens, input_token_key = _input_tokens_from_metrics(metrics)
     if used_tokens is not None and input_token_key is not None:
@@ -377,6 +407,10 @@ def _context_window_fields(
     return fields
 
 
+def _pressure_metadata(out_dir: Path) -> dict[str, Any]:
+    return _read_json(out_dir / "context_pressure.json") or {}
+
+
 def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None) -> Path:
     root_path = Path(root).resolve()
     telemetry_path = Path(out) if out else root_path / "benchmark-data" / "runs" / run_id / "telemetry.jsonl"
@@ -389,7 +423,8 @@ def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None)
     emit(telemetry_path, "telemetry.collect_start", run_id=run_id)
 
     for phase, out_dir, repo_dir in phases:
-        metrics = _read_json(out_dir / "run_metrics.json")
+        metrics = _read_json(out_dir / "run_metrics.json") or {}
+        pressure_metadata = _pressure_metadata(out_dir)
         if metrics:
             emit(
                 telemetry_path,
@@ -402,7 +437,7 @@ def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None)
                 fields=_whitelist(metrics, LLM_METRIC_KEYS),
             )
 
-        provenance = _read_json(out_dir / "run_provenance.json")
+        provenance = _read_json(out_dir / "run_provenance.json") or {}
         if provenance:
             arm = provenance.get("resolved_arm_slug") or provenance.get("requested_arm_slug")
             emit(
@@ -415,7 +450,7 @@ def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None)
                 fields=_safe_provenance_fields(provenance, root_path),
             )
 
-        if metrics or provenance:
+        if metrics or provenance or pressure_metadata:
             arm = metrics.get("arm_slug") or provenance.get("resolved_arm_slug") or provenance.get("requested_arm_slug")
             task = metrics.get("task_slug") or provenance.get("task_slug")
             label = metrics.get("label") or phase
@@ -433,6 +468,7 @@ def collect_run(*, root: str | Path, run_id: str, out: str | Path | None = None)
                     root=root_path,
                     metrics=metrics,
                     provenance=provenance,
+                    pressure_metadata=pressure_metadata,
                 ),
             )
 

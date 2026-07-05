@@ -72,8 +72,15 @@ FINALIZER_FIELDS = [
 ROW_FIELDS = [
     "bundle",
     "run_id",
+    "task_slug",
     "arm_slug",
     "bundle_type",
+    "pressure_level",
+    "pressure_seed",
+    "pressure_tokens_estimated",
+    "context_window_tokens",
+    "estimated_context_utilization",
+    "max_context_utilization",
     "solution_latency_observable",
     "solution_latency_source",
     "initial_ready",
@@ -660,6 +667,43 @@ def _prefixed_finalizer(prefix: str, finalizer_summary: dict[str, object]) -> di
     return {f"{prefix}_finalizer_{field_name}": finalizer_summary.get(summary_key) for summary_key, field_name in FINALIZER_FIELD_MAP.items()}
 
 
+def _pressure_summary(*run_dirs: Path) -> dict[str, object]:
+    pressure_level = "none"
+    pressure_seed: int | None = None
+    pressure_tokens_estimated: int | None = None
+    context_window_tokens: int | None = None
+    estimated_context_utilization: float | None = None
+    max_context_utilization: float | None = None
+
+    for run_dir in run_dirs:
+        metrics = _read_json(run_dir / "run_metrics.json") or {}
+        provenance = _read_json(run_dir / "run_provenance.json") or {}
+        pressure = _read_json(run_dir / "context_pressure.json") or {}
+        merged = {**pressure, **provenance, **metrics}
+        if merged.get("pressure_level") is not None:
+            pressure_level = str(merged.get("pressure_level"))
+        if merged.get("pressure_seed") is not None:
+            pressure_seed = int(merged.get("pressure_seed"))
+        if merged.get("pressure_tokens_estimated") is not None:
+            pressure_tokens_estimated = int(merged.get("pressure_tokens_estimated"))
+        if merged.get("context_window_tokens") is not None:
+            context_window_tokens = int(merged.get("context_window_tokens"))
+        if merged.get("estimated_context_utilization") is not None:
+            estimated_context_utilization = float(merged.get("estimated_context_utilization"))
+        if merged.get("max_context_utilization") is not None:
+            value = float(merged.get("max_context_utilization"))
+            max_context_utilization = value if max_context_utilization is None else max(max_context_utilization, value)
+
+    return {
+        "pressure_level": pressure_level,
+        "pressure_seed": pressure_seed if pressure_seed is not None else 0,
+        "pressure_tokens_estimated": pressure_tokens_estimated if pressure_tokens_estimated is not None else 0,
+        "context_window_tokens": context_window_tokens,
+        "estimated_context_utilization": estimated_context_utilization if estimated_context_utilization is not None else 0.0,
+        "max_context_utilization": max_context_utilization,
+    }
+
+
 def score_bundle(bundle_path: Path | str) -> dict[str, object]:
     bundle_path = Path(bundle_path)
     with tempfile.TemporaryDirectory(prefix="benchmark-scorecard-") as tmpdir:
@@ -673,6 +717,8 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
         initial_run = paths["initial_run"]
         full_resume_run = paths["full_resume_run"]
         stripped_resume_run = paths["stripped_resume_run"]
+        initial_metrics = _read_json(initial_run / "run_metrics.json") or {}
+        initial_provenance = _read_json(initial_run / "run_provenance.json") or {}
         initial_not_ready = initial_run / "INITIAL_NOT_READY.txt"
         initial_ready = not initial_not_ready.exists()
 
@@ -731,6 +777,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
         initial_finalizer = _finalizer_summary(initial_run)
         full_resume_finalizer = _finalizer_summary(full_resume_run)
         stripped_resume_finalizer = _finalizer_summary(stripped_resume_run)
+        pressure_summary = _pressure_summary(initial_run, full_resume_run, stripped_resume_run)
         finalizer_summaries = [
             summary
             for summary in (initial_finalizer, full_resume_finalizer, stripped_resume_finalizer)
@@ -743,8 +790,10 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
         row = {
             "bundle": str(bundle_path),
             "run_id": run_id,
+            "task_slug": initial_metrics.get("task_slug") or initial_provenance.get("task_slug"),
             "arm_slug": _arm_slug_from_run_id(run_id),
             "bundle_type": bundle_type,
+            **pressure_summary,
             "solution_latency_observable": initial_latency.get("solution_latency_observable"),
             "solution_latency_source": initial_latency.get("solution_latency_source"),
             "initial_ready": initial_ready,

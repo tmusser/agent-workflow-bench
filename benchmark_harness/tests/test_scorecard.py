@@ -234,6 +234,11 @@ def test_scorecard_summarizes_baseline_bundle(tmp_path: Path):
         **base_initial_run_files(run_id),
         **base_resume_files(run_id, tag="full"),
         **base_resume_files(run_id, tag="stripped"),
+        f"benchmark-data/runs/{run_id}/run_provenance.json": json.dumps(
+            {"task_slug": "04-impossible-churn"},
+            indent=2,
+        )
+        + "\n",
         f"benchmark-data/workspaces/{run_id}/repo/TASK.md": "# task\n",
         f"benchmark-data/resume-workspaces/{run_id}/stripped/metadata/stripped_artifacts_manifest.json": json.dumps(
             {
@@ -252,6 +257,7 @@ def test_scorecard_summarizes_baseline_bundle(tmp_path: Path):
     row = scorecard.score_bundle(bundle)
 
     assert row["run_id"] == run_id
+    assert row["task_slug"] == "04-impossible-churn"
     assert row["arm_slug"] == "A-baseline"
     assert row["initial_verify_exit"] == 0
     assert row["initial_hidden_exit"] == 0
@@ -266,6 +272,43 @@ def test_scorecard_summarizes_baseline_bundle(tmp_path: Path):
     assert row["artifact_mechanism_active"] is False
     assert row["full_resume_green"] is True
     assert row["stripped_resume_green"] is True
+
+
+def test_scorecard_surfaces_pressure_metadata(tmp_path: Path):
+    run_id = "v04pilot_04-bugfix_A_pressure_r1"
+    files = {
+        **base_initial_run_files(run_id),
+        **base_resume_files(run_id, tag="full"),
+        **base_resume_files(run_id, tag="stripped"),
+        f"benchmark-data/runs/{run_id}/run_provenance.json": json.dumps(
+            {"task_slug": "04-impossible-churn"},
+            indent=2,
+        )
+        + "\n",
+        f"benchmark-data/runs/{run_id}/run_metrics.json": json.dumps(
+            {
+                "pressure_level": "medium",
+                "pressure_seed": 7,
+                "pressure_tokens_estimated": 3000,
+                "context_window_tokens": 20000,
+                "estimated_context_utilization": 15.0,
+                "max_context_utilization": 18.75,
+            }
+        )
+        + "\n",
+        f"benchmark-data/workspaces/{run_id}/repo/TASK.md": "# task\n",
+    }
+    bundle = make_bundle(tmp_path, run_id, files)
+
+    row = scorecard.score_bundle(bundle)
+
+    assert row["task_slug"] == "04-impossible-churn"
+    assert row["pressure_level"] == "medium"
+    assert row["pressure_seed"] == 7
+    assert row["pressure_tokens_estimated"] == 3000
+    assert row["context_window_tokens"] == 20000
+    assert row["estimated_context_utilization"] == 15.0
+    assert row["max_context_utilization"] == 18.75
     assert row["full_added_regression_test"] is True
     assert row["stripped_added_regression_test"] is True
     assert row["agent_side_verification_claim"] == "unknown"
@@ -275,6 +318,11 @@ def test_scorecard_detects_artifacts_and_skill_proof(tmp_path: Path):
     run_id = "v04pilot_04-bugfix_E_r3"
     files = {
         **base_initial_run_files(run_id, skill_runtime_proof=valid_skill_runtime_proof(run_id)),
+        f"benchmark-data/runs/{run_id}/run_provenance.json": json.dumps(
+            {"task_slug": "04-impossible-churn"},
+            indent=2,
+        )
+        + "\n",
         f"benchmark-data/runs/{run_id}/finalizer/summary.json": json.dumps(
             base_finalizer_summary(
                 ran=True,
@@ -340,6 +388,7 @@ def test_scorecard_detects_artifacts_and_skill_proof(tmp_path: Path):
     row = scorecard.score_bundle(bundle)
 
     assert row["run_id"] == run_id
+    assert row["task_slug"] == "04-impossible-churn"
     assert row["arm_slug"] == "E-ai-engineering-skills"
     assert row["skill_runtime_proof_present"] is True
     assert row["skill_runtime_proof_valid"] is True
@@ -375,6 +424,11 @@ def test_scorecard_claims_blocked_when_repo_artifacts_say_sandbox_blocked(tmp_pa
     run_id = "v04pilot_04-bugfix_E_r4"
     files = {
         **base_initial_run_files(run_id, skill_runtime_proof=valid_skill_runtime_proof(run_id)),
+        f"benchmark-data/runs/{run_id}/run_provenance.json": json.dumps(
+            {"task_slug": "04-impossible-churn"},
+            indent=2,
+        )
+        + "\n",
         **base_resume_files(run_id, tag="full"),
         **base_resume_files(run_id, tag="stripped"),
         f"benchmark-data/workspaces/{run_id}/repo/VERIFY.md": "sandbox blocked direct execution\n",
@@ -391,6 +445,7 @@ def test_scorecard_claims_blocked_when_repo_artifacts_say_sandbox_blocked(tmp_pa
     row = scorecard.score_bundle(bundle)
 
     assert row["run_id"] == run_id
+    assert row["task_slug"] == "04-impossible-churn"
     assert row["agent_side_verification_claim"] == "claimed_blocked"
     assert row["skill_runtime_proof_valid"] is True
 
@@ -532,16 +587,17 @@ def test_scorecard_handles_missing_optional_files_and_writes_outputs(tmp_path: P
     stdout = capsys.readouterr().out
 
     assert exit_code == 0
-    assert "| bundle | run_id | arm_slug |" in stdout
+    assert "| bundle | run_id | task_slug | arm_slug |" in stdout
     assert csv_out.exists()
     assert json_out.exists()
 
     csv_text = csv_out.read_text(encoding="utf-8")
-    assert "bundle,run_id,arm_slug" in csv_text
+    assert "bundle,run_id,task_slug,arm_slug" in csv_text
 
     data = json.loads(json_out.read_text(encoding="utf-8"))
     assert isinstance(data, list)
     assert data[0]["run_id"] == run_id
+    assert data[0]["task_slug"] is None
     assert data[0]["arm_slug"] == "unknown"
     assert data[0]["initial_hidden_exit"] is None
     assert data[0]["skill_runtime_proof_valid"] is False
@@ -593,7 +649,7 @@ def test_scorecard_handles_mixed_eval_and_initial_fail_bundles(tmp_path: Path, c
     stdout = capsys.readouterr().out
 
     assert exit_code == 0
-    assert "| bundle | run_id | arm_slug |" in stdout
+    assert "| bundle | run_id | task_slug | arm_slug |" in stdout
     assert csv_out.exists()
     assert json_out.exists()
 
