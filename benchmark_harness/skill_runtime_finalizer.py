@@ -18,6 +18,7 @@ from benchmark_harness.validate_skill_runtime_proof import validate as validate_
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FINALIZER_DIRNAME = "finalizer"
 ALLOWED_CHANGED_FILES = {"SKILL_RUNTIME_PROOF.md", "VERIFY.md"}
+DEFAULT_SKILL_PLUGIN_NAME = "ai-engineering-skills"
 IGNORED_PATH_PARTS = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "__pycache__", "node_modules"}
 IGNORED_FILENAMES = {".DS_Store"}
 
@@ -158,14 +159,22 @@ def _first_concrete(*values: str | None, default: str = "MISSING_CONTEXT_VALUE")
     return default
 
 
+def _pinned_skill_metadata_candidates(plugin_dir: str | None) -> list[Path]:
+    candidates: list[Path] = []
+    if plugin_dir:
+        plugin_dir_path = Path(plugin_dir).expanduser()
+        candidates.append(plugin_dir_path / "PINNED_SKILL_REPO.md")
+        candidates.append(PROJECT_ROOT / "local_plugins" / plugin_dir_path.name / "PINNED_SKILL_REPO.md")
+    candidates.append(PROJECT_ROOT / "local_plugins" / DEFAULT_SKILL_PLUGIN_NAME / "PINNED_SKILL_REPO.md")
+    return candidates
+
+
 def _read_pinned_skill_metadata(plugin_dir: str | None) -> dict[str, str]:
-    if not plugin_dir:
-        return {}
-    metadata_path = Path(plugin_dir).expanduser() / "PINNED_SKILL_REPO.md"
-    metadata_text = _read_text(metadata_path)
-    if metadata_text is None:
-        return {}
-    return _parse_markdown_fields(metadata_text)
+    for metadata_path in _pinned_skill_metadata_candidates(plugin_dir):
+        metadata_text = _read_text(metadata_path)
+        if metadata_text is not None:
+            return _parse_markdown_fields(metadata_text)
+    return {}
 
 
 def _render_skill_runtime_proof(
@@ -186,13 +195,20 @@ def _render_skill_runtime_proof(
     repo_url = _first_concrete(context.get("Repo URL"), pinned.get("Repo URL"))
     pinned_sha = _first_concrete(context.get("Pinned commit SHA"), pinned.get("Pinned commit SHA"))
     local_path = _first_concrete(context.get("Local plugin path"), pinned.get("Local path"), plugin_dir)
-    agent_visible_path = _first_concrete(context.get("Agent-visible plugin path"), plugin_dir)
+    agent_visible_path = _first_concrete(
+        context.get("Agent-visible plugin path"),
+        plugin_dir,
+        str((PROJECT_ROOT / local_path).resolve()) if local_path != "MISSING_CONTEXT_VALUE" else None,
+    )
     install_command = _first_concrete(pinned.get("Install command"), context.get("Pin command"))
     evidence_path = _first_concrete(
         context.get("Pre-run availability evidence path"),
         ".benchmark/SKILL_RUNTIME_CONTEXT.md",
     )
-    availability_command = _first_concrete(context.get("Pre-run availability check command"))
+    availability_command = _first_concrete(
+        context.get("Pre-run availability check command"),
+        f"test -f {agent_visible_path}/PINNED_SKILL_REPO.md",
+    )
     availability_result = _first_concrete(context.get("Pre-run availability check result"), "available")
 
     task_value = _first_concrete(context.get("Task slug"), task_slug)
