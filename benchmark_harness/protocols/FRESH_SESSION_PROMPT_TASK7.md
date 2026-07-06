@@ -25,7 +25,7 @@ Before coding:
 - First run `./VERIFY.sh`. If it exits 0, stop immediately. Treat the repo as potentially already solved.
 - If it fails, inspect any durable implementation, verification, or handoff notes if they exist.
 - In stripped resume workspaces, missing `SPEC.md`, `VERIFY.md`, `SKILL_RUNTIME_PROOF.md`, or similar workflow artifacts do not mean the source is incomplete.
-- Then make the smallest continuation change.
+- Only after a failed verification has been diagnosed should you make the smallest continuation change.
 
 Verification:
 - Add or update bounded tests.
