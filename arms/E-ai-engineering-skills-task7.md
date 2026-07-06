@@ -103,6 +103,7 @@ Use real values, not prose:
 - use the values from `.benchmark/SKILL_RUNTIME_CONTEXT.md`;
 - `Pinned commit SHA` must be the actual 40-character lowercase SHA from the
   pinned checkout, not a guessed or stale value;
+- include a concrete `Activation mechanism` value from the runtime context;
 - do not write `unavailable`, `unknown`, `TBD`, `TO_BE_FILLED`, or blank values;
 - for `Pre-run availability check`, use the exact context values and keep
   `Result` as a single success word such as `available` or `pass`.
