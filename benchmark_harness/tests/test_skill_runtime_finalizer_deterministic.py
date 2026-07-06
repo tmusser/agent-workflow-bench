@@ -76,7 +76,10 @@ def test_deterministic_finalizer_writes_valid_runtime_proof(tmp_path: Path):
 
     assert proof.exists()
     assert verify.exists()
+    text = proof.read_text(encoding="utf-8")
     assert validate(proof) == []
+    assert f"- Evidence path: {context_path}" in text
+    assert ".benchmark/SKILL_RUNTIME_CONTEXT.md records skill runtime availability" in text
     assert "deterministic harness audit finalizer" in verify.read_text(encoding="utf-8")
 
 
@@ -139,3 +142,6 @@ def test_deterministic_finalizer_recovers_pinned_sha_without_context(tmp_path: P
     text = proof.read_text(encoding="utf-8")
     assert f"- Pinned commit SHA: {VALID_SHA}" in text
     assert f"- Command run: test -f {expected_plugin_dir / 'PINNED_SKILL_REPO.md'}" in text
+    assert f"- Evidence path: {expected_plugin_dir / 'PINNED_SKILL_REPO.md'}" in text
+    assert f"{expected_plugin_dir / 'PINNED_SKILL_REPO.md'} records the pinned skill metadata" in text
+    assert ".benchmark/SKILL_RUNTIME_CONTEXT.md records skill runtime availability" not in text
