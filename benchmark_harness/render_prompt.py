@@ -18,6 +18,7 @@ def render_prompt(
     context_window_tokens: int | None = None,
     pressure_target_pct: float | None = None,
     metadata_out: Path | None = None,
+    ceremony_budget: Path | None = None,
 ) -> dict[str, object]:
     pressure = build_context_pressure(
         level=pressure_level,
@@ -29,6 +30,10 @@ def render_prompt(
         ("COMMON RUNNER WRAPPER", common_wrapper.read_text(encoding="utf-8")),
         ("ARM WRAPPER", arm_wrapper.read_text(encoding="utf-8")),
     ]
+    if ceremony_budget is not None:
+        budget_text = ceremony_budget.read_text(encoding="utf-8").strip()
+        if budget_text:
+            chunks.append(("CEREMONY BUDGET", budget_text))
     if pressure["background_text"]:
         chunks.append(("SYNTHETIC BACKGROUND CONTEXT", str(pressure["background_text"]).strip()))
     chunks.append(("TASK", task_prompt.read_text(encoding="utf-8")))
@@ -53,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--context-window-tokens", type=int, default=None)
     parser.add_argument("--pressure-target-pct", type=float, default=None)
     parser.add_argument("--metadata-out")
+    parser.add_argument("--ceremony-budget")
     args = parser.parse_args(argv)
     metadata = render_prompt(
         Path(args.common_wrapper),
@@ -64,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         context_window_tokens=args.context_window_tokens,
         pressure_target_pct=args.pressure_target_pct,
         metadata_out=Path(args.metadata_out) if args.metadata_out else None,
+        ceremony_budget=Path(args.ceremony_budget) if args.ceremony_budget else None,
     )
     print(json.dumps(metadata, indent=2, sort_keys=True))
     return 0

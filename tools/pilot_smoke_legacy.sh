@@ -16,6 +16,7 @@ MANIFEST="${MANIFEST:-$MANIFEST_DEFAULT}"
 HIDDEN_EVALUATOR_MODULE="${HIDDEN_EVALUATOR_MODULE:-$HIDDEN_EVALUATOR_MODULE_DEFAULT}"
 RESUME_HIDDEN_EVALUATOR_MODULE="${RESUME_HIDDEN_EVALUATOR_MODULE:-$RESUME_HIDDEN_EVALUATOR_MODULE_DEFAULT}"
 ARM_WRAPPER="${ARM_WRAPPER:-$ARM_WRAPPER_DEFAULT}"
+CEREMONY_BUDGET="${CEREMONY_BUDGET:-$CEREMONY_BUDGET_DEFAULT}"
 RUN_PREFIX="${RUN_PREFIX:-$RUN_PREFIX_DEFAULT}"
 EXPECTED_STARTER_VERIFY_FAILURE="${EXPECTED_STARTER_VERIFY_FAILURE:-$EXPECTED_STARTER_VERIFY_FAILURE_DEFAULT}"
 ARM_ID="${ARM_ID:-${ARM_SLUG%%-*}}"
@@ -37,6 +38,7 @@ CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-dangerously-skip-permissions}"
 CLAUDE_PLUGIN_DIR="${CLAUDE_PLUGIN_DIR:-}"
 CLAUDE_OUTPUT_FORMAT="${CLAUDE_OUTPUT_FORMAT:-text}"
 ENABLE_SKILL_RUNTIME_FINALIZER="${ENABLE_SKILL_RUNTIME_FINALIZER:-0}"
+MANUAL_RUN_HINTS="${MANUAL_RUN_HINTS:-1}"
 PRESSURE_LEVEL="${PRESSURE_LEVEL:-none}"
 PRESSURE_SEED="${PRESSURE_SEED:-0}"
 CONTEXT_WINDOW_TOKENS="${CONTEXT_WINDOW_TOKENS:-}"
@@ -370,17 +372,20 @@ init_run() {
     --arm-wrapper "$ARM_WRAPPER" \
     --task-prompt "$TASK_PROMPT" \
     --out "$RUN_DIR/prompt.md" \
+    ${CEREMONY_BUDGET:+--ceremony-budget "$CEREMONY_BUDGET"} \
     --pressure-level "$PRESSURE_LEVEL" \
     --pressure-seed "$PRESSURE_SEED" \
     ${CONTEXT_WINDOW_TOKENS:+--context-window-tokens "$CONTEXT_WINDOW_TOKENS"} \
     ${PRESSURE_TARGET_PCT:+--pressure-target-pct "$PRESSURE_TARGET_PCT"} \
     --metadata-out "$RUN_DIR/context_pressure.json"
 
-  copy_clipboard "$RUN_DIR/prompt.md"
-  print_run_agent_instructions "$WORK" "$RUN_DIR/prompt.md"
-  echo
-  echo "After the initial agent run, run:"
-  echo "  ./tools/pilot_smoke.sh collect-initial"
+  if [[ "$MANUAL_RUN_HINTS" == "1" ]]; then
+    copy_clipboard "$RUN_DIR/prompt.md"
+    print_run_agent_instructions "$WORK" "$RUN_DIR/prompt.md"
+    echo
+    echo "After the initial agent run, run:"
+    echo "  ./tools/pilot_smoke.sh collect-initial"
+  fi
 }
 
 run_claude_print() {
@@ -904,11 +909,13 @@ EOF_NOT_READY
   fi
   echo "Metadata isolation OK."
 
-  copy_clipboard "$FRESH_PROMPT"
-  print_run_agent_instructions "$FULL_REPO" "$FRESH_PROMPT"
-  echo
-  echo "After the FULL resume agent run, run:"
-  echo "  ./tools/pilot_smoke.sh collect-full"
+  if [[ "$MANUAL_RUN_HINTS" == "1" ]]; then
+    copy_clipboard "$FRESH_PROMPT"
+    print_run_agent_instructions "$FULL_REPO" "$FRESH_PROMPT"
+    echo
+    echo "After the FULL resume agent run, run:"
+    echo "  ./tools/pilot_smoke.sh collect-full"
+  fi
 }
 
 run_full_claude() {
@@ -981,11 +988,13 @@ collect_resume_condition() {
 collect_full() {
   require_root
   collect_resume_condition full
-  copy_clipboard "$FRESH_PROMPT"
-  print_run_agent_instructions "$STRIPPED_REPO" "$FRESH_PROMPT"
-  echo
-  echo "After the STRIPPED resume agent run, run:"
-  echo "  ./tools/pilot_smoke.sh collect-stripped"
+  if [[ "$MANUAL_RUN_HINTS" == "1" ]]; then
+    copy_clipboard "$FRESH_PROMPT"
+    print_run_agent_instructions "$STRIPPED_REPO" "$FRESH_PROMPT"
+    echo
+    echo "After the STRIPPED resume agent run, run:"
+    echo "  ./tools/pilot_smoke.sh collect-stripped"
+  fi
 }
 
 collect_stripped() {
@@ -1121,6 +1130,8 @@ auto_a_r1() {
   run_preflight_setup
   check_claude_cli
   reset_run_data_for_auto
+  local previous_manual_run_hints="$MANUAL_RUN_HINTS"
+  MANUAL_RUN_HINTS=0
   init_run
   run_initial_claude
   collect_initial

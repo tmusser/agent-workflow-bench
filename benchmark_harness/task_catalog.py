@@ -20,6 +20,7 @@ class TaskConfig:
     resume_evaluator_module: str | None = None
     fresh_session_prompt: str = "benchmark_harness/protocols/FRESH_SESSION_PROMPT.md"
     arm_wrapper_overrides: Mapping[str, str] = field(default_factory=dict)
+    ceremony_budget_overrides: Mapping[str, str] = field(default_factory=dict)
 
 
 TASKS: dict[str, TaskConfig] = {
@@ -113,6 +114,9 @@ TASKS: dict[str, TaskConfig] = {
             "B-strong-no-skill": "arms/B-strong-no-skill-task7.md",
             "E-ai-engineering-skills": "arms/E-ai-engineering-skills-task7.md",
         },
+        ceremony_budget_overrides={
+            "E-ai-engineering-skills": "benchmark_harness/protocols/CEREMONY_BUDGET_TASK7.md",
+        },
     ),
 }
 
@@ -127,6 +131,7 @@ def resolve_task_config(task_slug: str) -> TaskConfig:
 def resolve_defaults(task_slug: str, arm_slug: str) -> dict[str, str]:
     task = resolve_task_config(task_slug)
     arm_wrapper = task.arm_wrapper_overrides.get(arm_slug, f"arms/{arm_slug}.md")
+    ceremony_budget = task.ceremony_budget_overrides.get(arm_slug, "")
     return {
         "TASK_ID_DEFAULT": task.task_id,
         "TASK_NAME_DEFAULT": task.task_name,
@@ -138,6 +143,7 @@ def resolve_defaults(task_slug: str, arm_slug: str) -> dict[str, str]:
         "FRESH_SESSION_PROMPT_DEFAULT": task.fresh_session_prompt,
         "RUN_PREFIX_DEFAULT": task.run_prefix,
         "ARM_WRAPPER_DEFAULT": arm_wrapper,
+        "CEREMONY_BUDGET_DEFAULT": ceremony_budget,
         "EXPECTED_STARTER_VERIFY_FAILURE_DEFAULT": "true" if task.expected_starter_verify_failure else "false",
     }
 
