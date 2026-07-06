@@ -28,6 +28,6 @@ Before coding:
 - Only after a failed verification has been diagnosed should you make the smallest continuation change.
 
 Verification:
-- Add or update bounded tests.
+- If verification fails and source edits are needed, add or update bounded tests.
 - If `./VERIFY.sh` fails, diagnose the failure and only then edit source files.
 - Do not edit source files just to recreate missing workflow artifacts.
