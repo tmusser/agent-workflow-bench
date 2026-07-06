@@ -22,9 +22,12 @@ Important scope:
 - Preserve existing JSON behavior.
 
 Before coding:
-- Inspect any durable implementation, verification, or handoff notes if they exist.
+- First run `./VERIFY.sh`. If it exits 0, stop immediately. Treat the repo as potentially already solved.
+- If it fails, inspect any durable implementation, verification, or handoff notes if they exist.
+- In stripped resume workspaces, missing `SPEC.md`, `VERIFY.md`, `SKILL_RUNTIME_PROOF.md`, or similar workflow artifacts do not mean the source is incomplete.
 - Then make the smallest continuation change.
 
 Verification:
 - Add or update bounded tests.
-- Run `./VERIFY.sh`.
+- If `./VERIFY.sh` fails, diagnose the failure and only then edit source files.
+- Do not edit source files just to recreate missing workflow artifacts.

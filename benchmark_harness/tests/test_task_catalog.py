@@ -158,6 +158,12 @@ def test_task7_fresh_session_prompt_is_task_specific():
     assert "region filter" in text
     assert "finance_weekly" in text
     assert "Do not build a generic filtering framework." in text
+    assert "First run `./VERIFY.sh`" in text
+    assert "If it exits 0, stop immediately." in text
+    assert text.index("First run `./VERIFY.sh`") < text.index("If it fails, inspect any durable implementation")
+    assert "missing `SPEC.md`, `VERIFY.md`, `SKILL_RUNTIME_PROOF.md`" in text
+    assert "If `./VERIFY.sh` fails, diagnose the failure and only then edit source files." in text
+    assert "Do not edit source files just to recreate missing workflow artifacts." in text
     assert "Task 4" not in text
 
 
