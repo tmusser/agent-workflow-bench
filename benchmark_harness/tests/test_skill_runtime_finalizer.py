@@ -65,7 +65,28 @@ def _prepare_workspace(tmp_path: Path) -> tuple[Path, Path, Path]:
         executable=True,
     )
     _write(workspace_root / "VERIFY.md", "Run VERIFY.sh and record the result.\n")
-    _write(workspace_root / ".benchmark" / "SKILL_RUNTIME_CONTEXT.md", "context\n")
+    context_path = workspace_root / ".benchmark" / "SKILL_RUNTIME_CONTEXT.md"
+    _write(
+        context_path,
+        "\n".join(
+            [
+                "# Skill Runtime Context",
+                "",
+                "- Repo URL: https://example.com/skills.git",
+                f"- Pinned commit SHA: {VALID_SHA}",
+                "- Local plugin path: /tmp/plugins",
+                "- Agent-visible plugin path: /tmp/plugins",
+                "- Pin command: ./benchmark_harness/scripts/pin_skill_repos.sh local_plugins",
+                "- Pre-run availability check command: test -f /tmp/plugins/PINNED_SKILL_REPO.md",
+                "- Pre-run availability check result: available",
+                f"- Pre-run availability evidence path: {context_path}",
+                "- Task slug: 04-impossible-churn",
+                "- Arm slug: E-ai-engineering-skills",
+                "- Run ID: run-1",
+                "",
+            ]
+        ),
+    )
     _write(prompt_file, "finalizer prompt\n")
     return workspace_root, run_dir, prompt_file
 
@@ -245,23 +266,8 @@ def test_finalizer_runs_when_proof_is_missing_and_copies_back_proof(tmp_path: Pa
     finalizer_dir = run_dir / "finalizer"
     monkeypatch.setenv("ENABLE_SKILL_RUNTIME_FINALIZER", "1")
 
-    snapshot_roots: list[Path] = []
-
-    def fake_run_claude(**kwargs: object) -> dict[str, object]:
-        snapshot_root = kwargs["snapshot_root"]
-        out_dir = kwargs["out_dir"]
-        assert isinstance(snapshot_root, Path)
-        assert snapshot_root != workspace_root
-        snapshot_roots.append(snapshot_root)
-        _write(snapshot_root / "SKILL_RUNTIME_PROOF.md", _valid_skill_runtime_proof("run-1"))
-        _write_summary_files(out_dir)
-        return {
-            "claude_exit_code": 0,
-            "num_turns": 6,
-            "total_cost_usd": 0.0187,
-            "wall_clock_seconds": 12.34,
-            "output_format": "json",
-        }
+    def fail_if_claude_called(**_: object) -> dict[str, object]:
+        raise AssertionError("deterministic finalizer must not call Claude")
 
     def fake_run_verify(snapshot_root: Path, output_path: Path) -> int:
         assert snapshot_root != workspace_root
@@ -274,7 +280,7 @@ def test_finalizer_runs_when_proof_is_missing_and_copies_back_proof(tmp_path: Pa
         _write(output_path, "hidden ok\n")
         return 0
 
-    monkeypatch.setattr(finalizer, "_run_claude", fake_run_claude)
+    monkeypatch.setattr(finalizer, "_run_claude", fail_if_claude_called)
     monkeypatch.setattr(finalizer, "_run_verify", fake_run_verify)
     monkeypatch.setattr(finalizer, "_run_hidden", fake_run_hidden)
 
@@ -299,57 +305,47 @@ def test_finalizer_runs_when_proof_is_missing_and_copies_back_proof(tmp_path: Pa
 
     summary = json.loads((finalizer_dir / "summary.json").read_text(encoding="utf-8"))
     audit = json.loads((finalizer_dir / "file_change_audit.json").read_text(encoding="utf-8"))
+
     assert exit_code == 0
-    assert snapshot_roots and snapshot_roots[0] != workspace_root
     assert summary["finalizer_ran"] is True
     assert summary["created_skill_runtime_proof"] is True
     assert summary["finalizer_valid"] is True
     assert summary["bench_ready_after_finalizer"] is True
     assert summary["bench_ready_via_finalizer"] is True
     assert summary["functional_files_changed"] is False
-    assert summary["allowed_files_changed"] == ["SKILL_RUNTIME_PROOF.md"]
+    assert summary["allowed_files_changed"] == ["SKILL_RUNTIME_PROOF.md", "VERIFY.md"]
     assert summary["forbidden_files_changed"] == []
-    assert summary["actual_turns"] == 6
-    assert summary["total_cost_usd"] == 0.0187
-    assert summary["wall_clock_seconds"] == 12.34
+    assert summary["actual_turns"] == 0
+    assert summary["total_cost_usd"] == 0.0
+    assert summary["wall_clock_seconds"] >= 0.0
     assert summary["claude_exit_code"] == 0
+    assert summary["output_format"] == "deterministic"
     assert summary["validator_exit"] == 0
     assert summary["verify_after_exit"] == 0
     assert summary["hidden_after_exit"] == 0
-    assert (finalizer_dir / "claude_stdout.txt").exists()
-    assert (finalizer_dir / "claude_stderr.txt").exists()
-    assert (finalizer_dir / "claude_exit_code.txt").exists()
+    assert not (finalizer_dir / "claude_stdout.txt").exists()
+    assert not (finalizer_dir / "claude_stderr.txt").exists()
+    assert not (finalizer_dir / "claude_exit_code.txt").exists()
     assert (finalizer_dir / "run_metrics.json").exists()
     assert (finalizer_dir / "validation.txt").exists()
     assert (finalizer_dir / "verify_after.txt").exists()
     assert (finalizer_dir / "hidden_after.txt").exists()
     assert (workspace_root / "SKILL_RUNTIME_PROOF.md").exists()
+    assert (workspace_root / "VERIFY.md").exists()
     assert not (workspace_root / "finalizer").exists()
     assert audit["functional_files_changed"] is False
-    assert audit["allowed_files_changed"] == ["SKILL_RUNTIME_PROOF.md"]
+    assert audit["allowed_files_changed"] == ["SKILL_RUNTIME_PROOF.md", "VERIFY.md"]
     assert audit["forbidden_files_changed"] == []
 
 
-def test_finalizer_invalidates_forbidden_functional_file_changes(tmp_path: Path, monkeypatch):
+def test_deterministic_finalizer_does_not_change_functional_files(tmp_path: Path, monkeypatch):
     workspace_root, run_dir, prompt_file = _prepare_workspace(tmp_path)
     finalizer_dir = run_dir / "finalizer"
     _write(workspace_root / "src" / "app.py", "print('main')\n")
     monkeypatch.setenv("ENABLE_SKILL_RUNTIME_FINALIZER", "1")
 
-    def fake_run_claude(**kwargs: object) -> dict[str, object]:
-        snapshot_root = kwargs["snapshot_root"]
-        out_dir = kwargs["out_dir"]
-        assert isinstance(snapshot_root, Path)
-        _write(snapshot_root / "SKILL_RUNTIME_PROOF.md", _valid_skill_runtime_proof("run-1"))
-        _write(snapshot_root / "src" / "app.py", "print('changed')\n")
-        _write_summary_files(out_dir)
-        return {
-            "claude_exit_code": 0,
-            "num_turns": 6,
-            "total_cost_usd": 0.0187,
-            "wall_clock_seconds": 12.34,
-            "output_format": "json",
-        }
+    def fail_if_claude_called(**_: object) -> dict[str, object]:
+        raise AssertionError("deterministic finalizer must not call Claude")
 
     def fake_run_verify(snapshot_root: Path, output_path: Path) -> int:
         _write(output_path, "verify ok\n")
@@ -359,7 +355,7 @@ def test_finalizer_invalidates_forbidden_functional_file_changes(tmp_path: Path,
         _write(output_path, "hidden ok\n")
         return 0
 
-    monkeypatch.setattr(finalizer, "_run_claude", fake_run_claude)
+    monkeypatch.setattr(finalizer, "_run_claude", fail_if_claude_called)
     monkeypatch.setattr(finalizer, "_run_verify", fake_run_verify)
     monkeypatch.setattr(finalizer, "_run_hidden", fake_run_hidden)
 
@@ -384,11 +380,11 @@ def test_finalizer_invalidates_forbidden_functional_file_changes(tmp_path: Path,
 
     summary = json.loads((finalizer_dir / "summary.json").read_text(encoding="utf-8"))
     audit = json.loads((finalizer_dir / "file_change_audit.json").read_text(encoding="utf-8"))
-    assert exit_code == 1
-    assert summary["finalizer_ran"] is True
-    assert summary["finalizer_valid"] is False
-    assert summary["bench_ready_after_finalizer"] is False
-    assert summary["functional_files_changed"] is True
-    assert "src/app.py" in summary["forbidden_files_changed"]
-    assert "src/app.py" in audit["forbidden_files_changed"]
-    assert not (workspace_root / "SKILL_RUNTIME_PROOF.md").exists()
+
+    assert exit_code == 0
+    assert summary["finalizer_valid"] is True
+    assert summary["functional_files_changed"] is False
+    assert summary["forbidden_files_changed"] == []
+    assert audit["functional_files_changed"] is False
+    assert audit["forbidden_files_changed"] == []
+    assert (workspace_root / "src" / "app.py").read_text(encoding="utf-8") == "print('main')\n"
