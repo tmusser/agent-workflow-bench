@@ -33,6 +33,7 @@ VALID_PROOF = """# Skill Runtime Proof
 - Evidence path: benchmark-data/runs/r1/skill_available.txt
 
 ## During-run evidence
+- Invocation evidence level: agent_declared
 - Did the agent mention or invoke the skill? yes/no/unclear
 - Evidence: benchmark-data/runs/r1/stdout.txt
 - Notes: none
@@ -77,6 +78,7 @@ def test_template_mode_allows_blank_template(tmp_path: Path):
 - Result:
 
 ## During-run evidence
+- Invocation evidence level:
 """, encoding="utf-8")
 
     assert validate(path, allow_template=True) == []
@@ -86,3 +88,18 @@ def test_template_mode_allows_blank_template(tmp_path: Path):
 def test_template_task_field_is_placeholder():
     template = Path(__file__).resolve().parents[1] / "templates" / "SKILL_RUNTIME_PROOF_TEMPLATE.md"
     assert "- Task: TO_BE_FILLED" in template.read_text(encoding="utf-8")
+
+
+def test_invalid_invocation_evidence_level_fails(tmp_path: Path):
+    path = tmp_path / "SKILL_RUNTIME_PROOF.md"
+    path.write_text(
+        VALID_PROOF.replace("- Invocation evidence level: agent_declared", "- Invocation evidence level: guessed"),
+        encoding="utf-8",
+    )
+
+    issues = validate(path)
+
+    assert (
+        "Invocation evidence level must be one of: availability_only, artifact_inferred, agent_declared, runtime_hook"
+        in issues
+    )

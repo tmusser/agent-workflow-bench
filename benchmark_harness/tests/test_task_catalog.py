@@ -81,6 +81,7 @@ def test_task7_e_wrapper_mentions_strict_runtime_proof_template():
     assert "HANDOFF.md" in text
     assert "SKILL_RUNTIME_PROOF.md" in text
     assert "During-run evidence" in text
+    assert "Invocation evidence level" in text
     assert "keep" in text
     assert "single success word" in text
     assert "Pre-run availability check" in text
@@ -99,6 +100,7 @@ def test_task6_e_wrapper_mentions_strict_runtime_proof_template():
     assert "HANDOFF.md" in text
     assert "SKILL_RUNTIME_PROOF.md" in text
     assert "During-run evidence" in text
+    assert "Invocation evidence level" in text
 
 
 def test_task6_manifest_strips_implementation_note_and_skill_proof():

@@ -104,6 +104,9 @@ Use real values, not prose:
 - `Pinned commit SHA` must be the actual 40-character lowercase SHA from the
   pinned checkout, not a guessed or stale value;
 - include a concrete `Activation mechanism` value from the runtime context;
+- include an `Invocation evidence level` of `availability_only`,
+  `artifact_inferred`, `agent_declared`, or `runtime_hook`;
+- only use `runtime_hook` if the evidence came from an actual runtime hook;
 - include concrete `During-run evidence` for the files and commands used;
 - do not write `unavailable`, `unknown`, `TBD`, `TO_BE_FILLED`, or blank values;
 - for `Pre-run availability check`, use the exact context values and keep

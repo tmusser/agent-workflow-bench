@@ -61,6 +61,10 @@ Scorecard rows are meant to compare:
 
 The scorecard is a reporting utility, not a new benchmark task.
 
+Future scorecard columns may separate `skill_available`, `artifact_inferred`,
+`agent_declared_trace`, and `runtime_hook_trace` so rows are less likely to be read
+as if artifact evidence were invocation proof.
+
 ## Caution
 
 A green row does not by itself prove broad skill superiority. It only says the run satisfied this bundle's checks and resume conditions.

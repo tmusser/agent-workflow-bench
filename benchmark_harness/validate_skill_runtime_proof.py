@@ -16,6 +16,7 @@ REQUIRED_MARKERS = [
     "- Command run:",
     "- Result:",
     "## During-run evidence",
+    "- Invocation evidence level:",
 ]
 
 STRICT_FIELDS = [
@@ -31,7 +32,15 @@ STRICT_FIELDS = [
     "Command run",
     "Result",
     "Evidence path",
+    "Invocation evidence level",
 ]
+
+ALLOWED_INVOCATION_EVIDENCE_LEVELS = {
+    "availability_only",
+    "artifact_inferred",
+    "agent_declared",
+    "runtime_hook",
+}
 
 PLACEHOLDER_VALUES = {
     "",
@@ -84,6 +93,12 @@ def validate(path: Path, *, allow_template: bool = False) -> list[str]:
     result = (_field_value(text, "Result") or "").strip().lower()
     if result and result not in {"pass", "passed", "success", "available", "ok", "yes"}:
         issues.append("Pre-run availability Result must indicate a successful availability check")
+
+    invocation_evidence_level = (_field_value(text, "Invocation evidence level") or "").strip().lower()
+    if invocation_evidence_level and invocation_evidence_level not in ALLOWED_INVOCATION_EVIDENCE_LEVELS:
+        issues.append(
+            "Invocation evidence level must be one of: availability_only, artifact_inferred, agent_declared, runtime_hook"
+        )
 
     return issues
 

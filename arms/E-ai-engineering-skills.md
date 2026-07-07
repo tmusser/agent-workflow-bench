@@ -57,9 +57,10 @@ SKILL_RUNTIME_PROOF.md must use this exact structure and fill every field with c
 - Evidence path: .benchmark/SKILL_RUNTIME_CONTEXT.md
 
 ## During-run evidence
-- Did the agent mention or invoke the skill? yes/no/unclear: yes
+- Invocation evidence level: availability_only, artifact_inferred, agent_declared, or runtime_hook
+- Did the agent mention or invoke the skill? yes/no/unclear: only say yes if SKILL_TRACE.jsonl or actual logs support it
 - Evidence: list the namespaced skills or concise workflow used
-- Notes: if shell verification is unavailable, say so; external harness verification is authoritative
+- Notes: if shell verification is unavailable, say so; artifact evidence is not runtime-hook proof; external harness verification is authoritative
 
 ## Post-run caveat
 - Could a bad result be due to the skill not being loaded? yes/no/unclear: no

@@ -36,6 +36,7 @@ def valid_skill_runtime_proof(run_id: str, arm: str = "E") -> str:
         - Activation mechanism: skill directory mounted before run
         - Prompt wrapper path: arms/E-ai-engineering-skills.md
         - Agent-visible skill files: ~/.claude/skills/repo/README.md
+        - Environment variables relevant to skill loading: CLAUDE_PLUGIN_DIR=/tmp/skills/repo
 
         ## Pre-run availability check
         - Command run: test -f ~/.claude/skills/repo/README.md
@@ -43,9 +44,14 @@ def valid_skill_runtime_proof(run_id: str, arm: str = "E") -> str:
         - Evidence path: benchmark-data/runs/{run_id}/skill_available.txt
 
         ## During-run evidence
+        - Invocation evidence level: agent_declared
         - Did the agent mention or invoke the skill? yes
         - Evidence: benchmark-data/runs/{run_id}/stdout.txt
         - Notes: none
+
+        ## Post-run caveat
+        - Could a bad result be due to the skill not being loaded? no
+        - Reviewer notes: none
         """
     )
 

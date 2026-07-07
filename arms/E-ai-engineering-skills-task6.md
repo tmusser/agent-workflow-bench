@@ -68,6 +68,7 @@ The proof must include these sections and non-placeholder fields:
 - Evidence path:
 
 ## During-run evidence
+- Invocation evidence level:
 - Did the agent mention or invoke the skill? yes/no/unclear:
 - Evidence:
 - Notes:
@@ -86,6 +87,9 @@ Use real values, not prose:
 - Use the values from `.benchmark/SKILL_RUNTIME_CONTEXT.md`.
 - `Pinned commit SHA` must be the actual 40-character lowercase commit SHA from the
   pinned checkout, not a guessed or stale value.
+- `Invocation evidence level` must be one of `availability_only`,
+  `artifact_inferred`, `agent_declared`, or `runtime_hook`.
+- Do not claim `runtime_hook` unless the evidence came from an actual runtime hook.
 - Do not write `unavailable`, `unknown`, `TBD`, `TO_BE_FILLED`, or blank values.
 - `Pre-run availability check`:
   - `Command run`: the exact local command you used to confirm the plugin checkout and

@@ -61,6 +61,7 @@ Create `SKILL_RUNTIME_PROOF.md` with this exact heading and field structure:
 - Evidence path:
 
 ## During-run evidence
+- Invocation evidence level:
 - Did the agent mention or invoke the skill? yes/no/unclear:
 - Evidence:
 - Notes:
@@ -78,10 +79,18 @@ or the prompt wrapper path named in the runtime context.
 For Result, use a single concrete success word such as available or pass
 when the runtime context shows the skill was available.
 
-For During-run evidence, cite visible evidence from the run workspace, such as
-SPEC.md, VERIFY.md, HANDOFF.md, prompt wrapper instructions, or other
-agent-created files. If the main agent did not create all expected artifacts,
-state that clearly without using placeholder language.
+For During-run evidence, keep the claim conservative:
+
+- `Invocation evidence level` must be one of:
+  `availability_only`, `artifact_inferred`, `agent_declared`, `runtime_hook`
+- Only use `runtime_hook` if the evidence actually came from a runtime hook.
+- Artifact-derived evidence is `artifact_inferred`, not invocation proof.
+- `SKILL_TRACE.jsonl` is agent-declared trace evidence, not runtime-hook proof.
+
+For evidence, cite visible workspace evidence such as `SPEC.md`, `VERIFY.md`,
+`HANDOFF.md`, prompt wrapper instructions, or `SKILL_TRACE.jsonl`. If the main
+agent did not create all expected artifacts, state that clearly without using
+placeholder language.
 
 Required VERIFY.md shape
 

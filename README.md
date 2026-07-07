@@ -16,6 +16,7 @@ It is a narrower benchmark for whether workflow skills improve audit trails, ver
 For a compact summary, see [docs/overview.md](docs/overview.md).
 For deterministic artifact hygiene checks, see [docs/artifact-usability.md](docs/artifact-usability.md).
 For inferred skill evidence summaries, see [docs/skill-routing-summary.md](docs/skill-routing-summary.md).
+For agent-declared trace evidence, see [docs/skill-trace.md](docs/skill-trace.md).
 
 ## 1. What This Is
 
@@ -214,6 +215,8 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 - Tasks 1-3 are low-ceremony smoke / bridge tasks and should not be read as evidence of broad skill superiority.
 - Task 5 yellow rows are useful negative results, not broken scorecard rows.
 - Generated artifacts, bundles, and local caches should stay out of source control.
+- The benchmark now separates skill availability, artifact-inferred evidence, and agent-declared trace evidence. True runtime-hook invocation tracing remains future work.
+- The scorecard still reports the older artifact-focused rows. Future columns may expose `skill_available`, `artifact_inferred`, `agent_declared_trace`, and `runtime_hook_trace`.
 - Runs without per-turn or checkpoint evidence remain final-only, so `terminal_reason=max_turns` does not imply the solution first became correct at the final turn. Efficiency claims require observable first-green telemetry.
 - Context pressure measures degradation under constrained, cluttered context. It does not by itself establish broad model superiority; compare like-for-like tasks, arms, and pressure settings.
 
