@@ -75,7 +75,12 @@ def _is_placeholder(value: str | None) -> bool:
     return normalized in PLACEHOLDER_VALUES or normalized.startswith("to be filled")
 
 
-def validate(path: Path, *, allow_template: bool = False) -> list[str]:
+def validate(
+    path: Path,
+    *,
+    allow_template: bool = False,
+    allow_runtime_hook: bool = False,
+) -> list[str]:
     text = path.read_text(encoding="utf-8")
     issues = [f"missing marker: {marker}" for marker in REQUIRED_MARKERS if marker not in text]
     if allow_template:
@@ -95,7 +100,11 @@ def validate(path: Path, *, allow_template: bool = False) -> list[str]:
         issues.append("Pre-run availability Result must indicate a successful availability check")
 
     invocation_evidence_level = (_field_value(text, "Invocation evidence level") or "").strip().lower()
-    if invocation_evidence_level and invocation_evidence_level not in ALLOWED_INVOCATION_EVIDENCE_LEVELS:
+    if invocation_evidence_level == "runtime_hook" and not allow_runtime_hook:
+        issues.append(
+            "Invocation evidence level runtime_hook requires --allow-runtime-hook until true runtime-hook evidence is supported"
+        )
+    elif invocation_evidence_level and invocation_evidence_level not in ALLOWED_INVOCATION_EVIDENCE_LEVELS:
         issues.append(
             "Invocation evidence level must be one of: availability_only, artifact_inferred, agent_declared, runtime_hook"
         )
@@ -107,12 +116,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate a SKILL_RUNTIME_PROOF.md file.")
     parser.add_argument("path")
     parser.add_argument(
+        "--allow-runtime-hook",
+        action="store_true",
+        help="Allow Invocation evidence level: runtime_hook for repositories with real runtime-hook evidence.",
+    )
+    parser.add_argument(
         "--allow-template",
         action="store_true",
         help="Only validate required markers; use for the blank template, not real run proofs.",
     )
     args = parser.parse_args(argv)
-    issues = validate(Path(args.path), allow_template=args.allow_template)
+    issues = validate(
+        Path(args.path),
+        allow_template=args.allow_template,
+        allow_runtime_hook=args.allow_runtime_hook,
+    )
     if issues:
         for issue in issues:
             print(issue)

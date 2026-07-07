@@ -190,7 +190,7 @@ def test_deterministic_finalizer_uses_trace_for_yes_without_claiming_runtime_hoo
 
     text = (repo / "SKILL_RUNTIME_PROOF.md").read_text(encoding="utf-8")
 
-    assert "- Invocation evidence level: artifact_inferred" in text
+    assert "- Invocation evidence level: agent_declared" in text
     assert "- Did the agent mention or invoke the skill? yes/no/unclear: yes" in text
     assert "SKILL_TRACE.jsonl declares invoked skills: verify-contract." in text
     assert "runtime_hook" not in text.split("## During-run evidence", 1)[1].split("## Post-run caveat", 1)[0]

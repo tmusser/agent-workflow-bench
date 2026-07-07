@@ -40,6 +40,16 @@ verify-contract -> handoff` chain if it would delay the first implementation
 edit. The benchmark rewards bounded, verified, resumable work, not artifact
 volume.
 
+Create `SKILL_TRACE.jsonl` when using or skipping workflow skills. Keep it tiny: 2-5 JSONL rows is enough. Each line must be one JSON object with `event_type` and `skill_name`.
+
+Allowed `event_type` values:
+- `skill_available`
+- `skill_considered`
+- `skill_invoked`
+- `skill_skipped`
+
+This is agent-declared trace evidence, not runtime-hook proof. Do not let trace writing delay the first implementation edit or expand ceremony.
+
 Implementation focus:
 
 - Keep the implementation finance-weekly-only.

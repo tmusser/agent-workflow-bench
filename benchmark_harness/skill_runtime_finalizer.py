@@ -264,7 +264,12 @@ def _render_skill_runtime_proof(
     availability_result = _first_concrete(context.get("Pre-run availability check result"), "available")
     artifact_evidence = _artifact_inference_evidence(snapshot_root)
     has_declared_invocation, declared_invoked_skills = _declared_invocation_support(snapshot_root)
-    invocation_evidence_level = "artifact_inferred" if artifact_evidence else "availability_only"
+    if has_declared_invocation:
+        invocation_evidence_level = "agent_declared"
+    elif artifact_evidence:
+        invocation_evidence_level = "artifact_inferred"
+    else:
+        invocation_evidence_level = "availability_only"
     mention_or_invoke = "yes" if has_declared_invocation else "unclear"
     if has_declared_invocation:
         runtime_evidence = f"{TRACE_FILENAME} declares invoked skills: {', '.join(declared_invoked_skills)}."

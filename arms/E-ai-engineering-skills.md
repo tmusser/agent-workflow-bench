@@ -18,6 +18,16 @@ Useful namespaced skills include:
 - /ai-engineering-skills:verify-contract
 - /ai-engineering-skills:handoff
 
+Create `SKILL_TRACE.jsonl` when using or skipping workflow skills. Keep it tiny: 2-5 JSONL rows is enough. Each line must be one JSON object with `event_type` and `skill_name`.
+
+Allowed `event_type` values:
+- `skill_available`
+- `skill_considered`
+- `skill_invoked`
+- `skill_skipped`
+
+This is agent-declared trace evidence, not runtime-hook proof. Do not let trace writing delay the implementation or verification work.
+
 Required work order:
 1. Read TASK.md before editing.
 2. Make the smallest correct code change.

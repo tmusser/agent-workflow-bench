@@ -27,6 +27,7 @@ The benchmark now separates four evidence levels:
 | `runtime_hook` | Future work: a true runtime-integrated hook records turn-level skill invocation evidence. |
 
 Only `runtime_hook` should be treated as true invocation proof.
+The validator rejects `runtime_hook` by default until the harness explicitly opts in.
 
 ## SKILL_TRACE.jsonl Schema
 

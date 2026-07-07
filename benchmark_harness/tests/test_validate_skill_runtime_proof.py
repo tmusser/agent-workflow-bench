@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from benchmark_harness.validate_skill_runtime_proof import validate
+import pytest
+
+from benchmark_harness.validate_skill_runtime_proof import main, validate
 
 
 VALID_PROOF = """# Skill Runtime Proof
@@ -44,9 +46,14 @@ VALID_PROOF = """# Skill Runtime Proof
 """
 
 
-def test_completed_runtime_proof_passes(tmp_path: Path):
+def _proof_with_level(level: str) -> str:
+    return VALID_PROOF.replace("- Invocation evidence level: agent_declared", f"- Invocation evidence level: {level}")
+
+
+@pytest.mark.parametrize("level", ["availability_only", "artifact_inferred", "agent_declared"])
+def test_allowed_invocation_evidence_levels_pass(tmp_path: Path, level: str):
     path = tmp_path / "SKILL_RUNTIME_PROOF.md"
-    path.write_text(VALID_PROOF, encoding="utf-8")
+    path.write_text(_proof_with_level(level), encoding="utf-8")
 
     assert validate(path) == []
 
@@ -93,7 +100,7 @@ def test_template_task_field_is_placeholder():
 def test_invalid_invocation_evidence_level_fails(tmp_path: Path):
     path = tmp_path / "SKILL_RUNTIME_PROOF.md"
     path.write_text(
-        VALID_PROOF.replace("- Invocation evidence level: agent_declared", "- Invocation evidence level: guessed"),
+        _proof_with_level("guessed"),
         encoding="utf-8",
     )
 
@@ -103,3 +110,29 @@ def test_invalid_invocation_evidence_level_fails(tmp_path: Path):
         "Invocation evidence level must be one of: availability_only, artifact_inferred, agent_declared, runtime_hook"
         in issues
     )
+
+
+def test_runtime_hook_fails_by_default(tmp_path: Path):
+    path = tmp_path / "SKILL_RUNTIME_PROOF.md"
+    path.write_text(_proof_with_level("runtime_hook"), encoding="utf-8")
+
+    issues = validate(path)
+
+    assert (
+        "Invocation evidence level runtime_hook requires --allow-runtime-hook until true runtime-hook evidence is supported"
+        in issues
+    )
+
+
+def test_runtime_hook_passes_with_explicit_opt_in(tmp_path: Path):
+    path = tmp_path / "SKILL_RUNTIME_PROOF.md"
+    path.write_text(_proof_with_level("runtime_hook"), encoding="utf-8")
+
+    assert validate(path, allow_runtime_hook=True) == []
+
+
+def test_runtime_hook_passes_with_cli_opt_in(tmp_path: Path):
+    path = tmp_path / "SKILL_RUNTIME_PROOF.md"
+    path.write_text(_proof_with_level("runtime_hook"), encoding="utf-8")
+
+    assert main([str(path), "--allow-runtime-hook"]) == 0

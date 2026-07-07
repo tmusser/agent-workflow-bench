@@ -12,6 +12,16 @@ exclusions, and non-goals.
 Use compact durable artifacts where helpful, such as `SPEC.md`, `VERIFY.md`, `HANDOFF.md`,
 or `MIGRATION_NOTES.md`.
 
+Create `SKILL_TRACE.jsonl` when using or skipping workflow skills. Keep it tiny: 2-5 JSONL rows is enough. Each line must be one JSON object with `event_type` and `skill_name`.
+
+Allowed `event_type` values:
+- `skill_available`
+- `skill_considered`
+- `skill_invoked`
+- `skill_skipped`
+
+This is agent-declared trace evidence, not runtime-hook proof. Do not let trace writing delay the first implementation edit or expand the migration ceremony.
+
 Keep the implementation focused. The goal is bounded, verified, resumable work, not more ceremony.
 
 Read `.benchmark/SKILL_RUNTIME_CONTEXT.md` before creating `SKILL_RUNTIME_PROOF.md`.
