@@ -22,6 +22,7 @@ def test_skill_runtime_finalizer_prompt_contains_strict_proof_schema():
         "- Command run:",
         "- Result:",
         "## During-run evidence",
+        "- Invocation evidence level:",
         "Do not ask for command approval.",
         "Do not ask to run commands.",
     ]

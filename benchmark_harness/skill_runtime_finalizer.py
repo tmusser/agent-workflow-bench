@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from benchmark_harness.skill_trace_summary import TRACE_FILENAME, summarize_repo as summarize_skill_trace_repo
 from benchmark_harness.solution_latency_observer import supports_stream_json
 from benchmark_harness.validate_skill_runtime_proof import validate as validate_skill_runtime_proof
 
@@ -21,6 +22,18 @@ ALLOWED_CHANGED_FILES = {"SKILL_RUNTIME_PROOF.md", "VERIFY.md"}
 DEFAULT_SKILL_PLUGIN_NAME = "ai-engineering-skills"
 IGNORED_PATH_PARTS = {".git", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".venv", "__pycache__", "node_modules"}
 IGNORED_FILENAMES = {".DS_Store"}
+ARTIFACT_INFERENCE_FILES = (
+    "SPEC.md",
+    "PLAN.md",
+    "TODO.md",
+    "VERIFY.md",
+    "HANDOFF.md",
+    "BUGS.md",
+    "BUGFIX_REVIEW.md",
+    "FRESH_SESSION_REVIEW.md",
+    "DATA_AUDIT.md",
+    "TRUST_AUDIT.md",
+)
 
 
 def _read_text(path: Path) -> str | None:
@@ -177,6 +190,18 @@ def _read_pinned_skill_metadata(plugin_dir: str | None) -> tuple[dict[str, str],
     return {}, None
 
 
+def _artifact_inference_evidence(snapshot_root: Path) -> list[str]:
+    return [path for path in ARTIFACT_INFERENCE_FILES if (snapshot_root / path).is_file()]
+
+
+def _declared_invocation_support(snapshot_root: Path) -> tuple[bool, list[str]]:
+    trace_path = snapshot_root / TRACE_FILENAME
+    if not trace_path.is_file():
+        return False, []
+    summary = summarize_skill_trace_repo(snapshot_root)
+    return bool(summary.declared_invoked_skills), summary.declared_invoked_skills
+
+
 def _render_skill_runtime_proof(
     *,
     snapshot_root: Path,
@@ -237,6 +262,25 @@ def _render_skill_runtime_proof(
         f"test -f {agent_visible_path}/PINNED_SKILL_REPO.md",
     )
     availability_result = _first_concrete(context.get("Pre-run availability check result"), "available")
+    artifact_evidence = _artifact_inference_evidence(snapshot_root)
+    has_declared_invocation, declared_invoked_skills = _declared_invocation_support(snapshot_root)
+    if has_declared_invocation:
+        invocation_evidence_level = "agent_declared"
+    elif artifact_evidence:
+        invocation_evidence_level = "artifact_inferred"
+    else:
+        invocation_evidence_level = "availability_only"
+    mention_or_invoke = "yes" if has_declared_invocation else "unclear"
+    if has_declared_invocation:
+        runtime_evidence = f"{TRACE_FILENAME} declares invoked skills: {', '.join(declared_invoked_skills)}."
+    elif artifact_evidence:
+        runtime_evidence = (
+            "Artifact-aligned evidence exists via durable files: "
+            + ", ".join(artifact_evidence)
+            + ". This is inferred evidence, not runtime-hook proof."
+        )
+    else:
+        runtime_evidence = "Only pre-run availability evidence is present; no artifact or trace evidence supports turn-level invocation."
 
     task_value = _first_concrete(context.get("Task slug"), task_slug)
     arm_value = _first_concrete(context.get("Arm slug"), arm_slug)
@@ -278,9 +322,10 @@ def _render_skill_runtime_proof(
             f"- Evidence path: {evidence_path}",
             "",
             "## During-run evidence",
-            "- Did the agent mention or invoke the skill? yes/no/unclear: yes",
-            f"- Evidence: {evidence_sentence}",
-            "- Notes: This proof was created by the harness audit finalizer after functional green; functional files were not changed.",
+            f"- Invocation evidence level: {invocation_evidence_level}",
+            f"- Did the agent mention or invoke the skill? yes/no/unclear: {mention_or_invoke}",
+            f"- Evidence: {runtime_evidence} Availability context: {evidence_sentence}",
+            "- Notes: This proof was created by the deterministic harness audit finalizer after functional green; it is conservative and does not claim runtime-hook tracing.",
             "",
             "## Post-run caveat",
             "- Could a bad result be due to the skill not being loaded? yes/no/unclear: no",

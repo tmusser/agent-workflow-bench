@@ -12,6 +12,16 @@ exclusions, and non-goals.
 Use compact durable artifacts where helpful, such as `SPEC.md`, `VERIFY.md`, `HANDOFF.md`,
 or `MIGRATION_NOTES.md`.
 
+Create `SKILL_TRACE.jsonl` when using or skipping workflow skills. Keep it tiny: 2-5 JSONL rows is enough. Each line must be one JSON object with `event_type` and `skill_name`.
+
+Allowed `event_type` values:
+- `skill_available`
+- `skill_considered`
+- `skill_invoked`
+- `skill_skipped`
+
+This is agent-declared trace evidence, not runtime-hook proof. Do not let trace writing delay the first implementation edit or expand the migration ceremony.
+
 Keep the implementation focused. The goal is bounded, verified, resumable work, not more ceremony.
 
 Read `.benchmark/SKILL_RUNTIME_CONTEXT.md` before creating `SKILL_RUNTIME_PROOF.md`.
@@ -68,6 +78,7 @@ The proof must include these sections and non-placeholder fields:
 - Evidence path:
 
 ## During-run evidence
+- Invocation evidence level:
 - Did the agent mention or invoke the skill? yes/no/unclear:
 - Evidence:
 - Notes:
@@ -86,6 +97,9 @@ Use real values, not prose:
 - Use the values from `.benchmark/SKILL_RUNTIME_CONTEXT.md`.
 - `Pinned commit SHA` must be the actual 40-character lowercase commit SHA from the
   pinned checkout, not a guessed or stale value.
+- `Invocation evidence level` must be one of `availability_only`,
+  `artifact_inferred`, `agent_declared`, or `runtime_hook`.
+- Do not claim `runtime_hook` unless the evidence came from an actual runtime hook.
 - Do not write `unavailable`, `unknown`, `TBD`, `TO_BE_FILLED`, or blank values.
 - `Pre-run availability check`:
   - `Command run`: the exact local command you used to confirm the plugin checkout and

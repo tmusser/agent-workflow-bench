@@ -20,6 +20,12 @@ def write(path: Path, text: str) -> None:
 def valid_skill_runtime_proof() -> str:
     return """# Skill Runtime Proof
 
+## Run
+- Run ID: run-1
+- Arm: E-ai-engineering-skills
+- Task: 07-dashboard-export-scope-pressure
+- Repeat: initial
+
 ## Skill source
 - Repo URL: https://github.com/tmusser/ai-engineering-skills
 - Pinned commit SHA: 0123456789abcdef0123456789abcdef01234567
@@ -32,13 +38,22 @@ def valid_skill_runtime_proof() -> str:
 - Activation mechanism: plugin-dir
 - Prompt wrapper path: arms/E-ai-engineering-skills.md
 - Agent-visible skill files: skills/verify-contract/SKILL.md
+- Environment variables relevant to skill loading: CLAUDE_PLUGIN_DIR=/tmp/skills
 
 ## Pre-run availability check
 - Command run: claude /help
 - Result: pass
+- Evidence path: benchmark-data/install.log
 
 ## During-run evidence
-- Evidence path: VERIFY.md
+- Invocation evidence level: artifact_inferred
+- Did the agent mention or invoke the skill? yes/no/unclear: unclear
+- Evidence: VERIFY.md
+- Notes: inferred from durable artifacts only
+
+## Post-run caveat
+- Could a bad result be due to the skill not being loaded? yes/no/unclear: unclear
+- Reviewer notes: artifact summary is not runtime-hook proof
 """
 
 

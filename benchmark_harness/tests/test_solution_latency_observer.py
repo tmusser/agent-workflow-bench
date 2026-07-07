@@ -45,6 +45,7 @@ def _valid_skill_runtime_proof(run_id: str) -> str:
         - Evidence path: benchmark-data/runs/{run_id}/skill_available.txt
 
         ## During-run evidence
+        - Invocation evidence level: agent_declared
         - Did the agent mention or invoke the skill? yes
         - Evidence: benchmark-data/runs/{run_id}/stdout.txt
         - Notes: none

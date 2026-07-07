@@ -40,6 +40,16 @@ verify-contract -> handoff` chain if it would delay the first implementation
 edit. The benchmark rewards bounded, verified, resumable work, not artifact
 volume.
 
+Create `SKILL_TRACE.jsonl` when using or skipping workflow skills. Keep it tiny: 2-5 JSONL rows is enough. Each line must be one JSON object with `event_type` and `skill_name`.
+
+Allowed `event_type` values:
+- `skill_available`
+- `skill_considered`
+- `skill_invoked`
+- `skill_skipped`
+
+This is agent-declared trace evidence, not runtime-hook proof. Do not let trace writing delay the first implementation edit or expand ceremony.
+
 Implementation focus:
 
 - Keep the implementation finance-weekly-only.
@@ -104,6 +114,9 @@ Use real values, not prose:
 - `Pinned commit SHA` must be the actual 40-character lowercase SHA from the
   pinned checkout, not a guessed or stale value;
 - include a concrete `Activation mechanism` value from the runtime context;
+- include an `Invocation evidence level` of `availability_only`,
+  `artifact_inferred`, `agent_declared`, or `runtime_hook`;
+- only use `runtime_hook` if the evidence came from an actual runtime hook;
 - include concrete `During-run evidence` for the files and commands used;
 - do not write `unavailable`, `unknown`, `TBD`, `TO_BE_FILLED`, or blank values;
 - for `Pre-run availability check`, use the exact context values and keep

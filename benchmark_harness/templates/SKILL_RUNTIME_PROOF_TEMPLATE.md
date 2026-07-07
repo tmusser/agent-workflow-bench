@@ -26,6 +26,7 @@
 - Evidence path: TO_BE_FILLED
 
 ## During-run evidence
+- Invocation evidence level: TO_BE_FILLED
 - Did the agent mention or invoke the skill? yes/no/unclear: TO_BE_FILLED
 - Evidence: TO_BE_FILLED
 - Notes: TO_BE_FILLED

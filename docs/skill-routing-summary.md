@@ -10,6 +10,9 @@ It does **not** prove that a slash command was invoked, that a skill fired at a
 specific turn, or that private reasoning used a skill. The output uses inferred
 language on purpose.
 
+For agent-declared trace evidence from `SKILL_TRACE.jsonl`, see
+[docs/skill-trace.md](skill-trace.md).
+
 ## Claim Boundary
 
 Every summary includes this boundary:
@@ -22,6 +25,9 @@ Every summary includes this boundary:
 
 That boundary is the feature. It prevents artifact evidence from being promoted
 into a stronger runtime trace claim.
+
+`skill-routing-summary` remains artifact-inferred. It is not runtime invocation
+proof, and it should not be read as turn-level trace evidence.
 
 ## Evidence Mapping
 

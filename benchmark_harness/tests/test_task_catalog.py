@@ -28,6 +28,17 @@ def test_task4_defaults_keep_existing_wrapper():
     assert defaults["EXPECTED_STARTER_VERIFY_FAILURE_DEFAULT"] == "true"
 
 
+def test_generic_e_wrapper_mentions_skill_trace_instructions():
+    wrapper = Path(__file__).resolve().parents[2] / "arms" / "E-ai-engineering-skills.md"
+    text = wrapper.read_text(encoding="utf-8")
+
+    assert "SKILL_TRACE.jsonl" in text
+    assert "agent-declared trace evidence" in text
+    assert "skill_available" in text
+    assert "skill_skipped" in text
+    assert "Do not let trace writing delay the implementation or verification work." in text
+
+
 def test_task5_defaults_switch_to_task_specific_e_wrapper():
     defaults = resolve_defaults("05-fake-data-analysis", "E-ai-engineering-skills")
 
@@ -81,6 +92,8 @@ def test_task7_e_wrapper_mentions_strict_runtime_proof_template():
     assert "HANDOFF.md" in text
     assert "SKILL_RUNTIME_PROOF.md" in text
     assert "During-run evidence" in text
+    assert "Invocation evidence level" in text
+    assert "SKILL_TRACE.jsonl" in text
     assert "keep" in text
     assert "single success word" in text
     assert "Pre-run availability check" in text
@@ -99,6 +112,9 @@ def test_task6_e_wrapper_mentions_strict_runtime_proof_template():
     assert "HANDOFF.md" in text
     assert "SKILL_RUNTIME_PROOF.md" in text
     assert "During-run evidence" in text
+    assert "Invocation evidence level" in text
+    assert "SKILL_TRACE.jsonl" in text
+    assert "Do not let trace writing delay the first implementation edit" in text
 
 
 def test_task6_manifest_strips_implementation_note_and_skill_proof():

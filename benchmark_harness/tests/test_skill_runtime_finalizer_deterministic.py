@@ -80,6 +80,8 @@ def test_deterministic_finalizer_writes_valid_runtime_proof(tmp_path: Path):
     assert validate(proof) == []
     assert f"- Evidence path: {context_path}" in text
     assert ".benchmark/SKILL_RUNTIME_CONTEXT.md records skill runtime availability" in text
+    assert "- Invocation evidence level: availability_only" in text
+    assert "- Did the agent mention or invoke the skill? yes/no/unclear: unclear" in text
     assert "deterministic harness audit finalizer" in verify.read_text(encoding="utf-8")
 
 
@@ -145,3 +147,50 @@ def test_deterministic_finalizer_recovers_pinned_sha_without_context(tmp_path: P
     assert f"- Evidence path: {expected_plugin_dir / 'PINNED_SKILL_REPO.md'}" in text
     assert f"{expected_plugin_dir / 'PINNED_SKILL_REPO.md'} records the pinned skill metadata" in text
     assert ".benchmark/SKILL_RUNTIME_CONTEXT.md records skill runtime availability" not in text
+
+
+def test_deterministic_finalizer_uses_trace_for_yes_without_claiming_runtime_hook(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".benchmark").mkdir()
+    _write(
+        repo / ".benchmark" / "SKILL_RUNTIME_CONTEXT.md",
+        "\n".join(
+            [
+                "# Skill Runtime Context",
+                "",
+                "- Repo URL: https://github.com/tmusser/ai-engineering-skills",
+                f"- Pinned commit SHA: {VALID_SHA}",
+                "- Local plugin path: /tmp/local_plugins/ai-engineering-skills",
+                "- Agent-visible plugin path: /tmp/local_plugins/ai-engineering-skills",
+                "- Pin command: ./benchmark_harness/scripts/pin_skill_repos.sh local_plugins",
+                "- Pre-run availability check command: test -f /tmp/local_plugins/ai-engineering-skills/PINNED_SKILL_REPO.md",
+                "- Pre-run availability check result: available",
+                "- Pre-run availability evidence path: .benchmark/SKILL_RUNTIME_CONTEXT.md",
+                "- Task slug: 07-dashboard-export-scope-pressure",
+                "- Arm slug: E-ai-engineering-skills",
+                "- Run ID: unit-run",
+                "",
+            ]
+        ),
+    )
+    _write(repo / "VERIFY.md", "verification\n")
+    _write(repo / "SKILL_TRACE.jsonl", '{"event_type":"skill_invoked","skill_name":"verify-contract"}\n')
+
+    _write_deterministic_audit_artifacts(
+        snapshot_root=repo,
+        run_id="unit-run",
+        task_slug="07-dashboard-export-scope-pressure",
+        arm_slug="E-ai-engineering-skills",
+        phase="initial",
+        plugin_dir="/tmp/local_plugins/ai-engineering-skills",
+        main_verify_exit=0,
+        main_hidden_exit=0,
+    )
+
+    text = (repo / "SKILL_RUNTIME_PROOF.md").read_text(encoding="utf-8")
+
+    assert "- Invocation evidence level: agent_declared" in text
+    assert "- Did the agent mention or invoke the skill? yes/no/unclear: yes" in text
+    assert "SKILL_TRACE.jsonl declares invoked skills: verify-contract." in text
+    assert "runtime_hook" not in text.split("## During-run evidence", 1)[1].split("## Post-run caveat", 1)[0]
