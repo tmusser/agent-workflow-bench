@@ -70,7 +70,11 @@ For agent-declared trace evidence, see [docs/skill-trace.md](docs/skill-trace.md
 
 ### Task 6: Activation Metric v2 Migration
 
-- Planned / under construction. See [docs/task6.md](docs/task6.md).
+- The visible task migrates a monthly activation metric from v1 to v2 while preserving the original definition.
+- The benchmark checks hidden metric-definition compatibility, zero-denominator behavior, CLI/report shape, and fresh-session continuation for a v1/v2 comparison report.
+- Current local pilot: B and E both passed initial, full-resume, and stripped-resume phases. E also produced valid skill runtime proof and workflow artifacts. Treat this as metric-migration/resumability evidence from one local pilot, not evidence that E outperforms B.
+- The generated Task 6 scorecard and bundles are local run artifacts and are not committed to source.
+- See [docs/task6.md](docs/task6.md).
 
 ### Task 7: Finance Weekly CSV Export
 
@@ -103,6 +107,7 @@ Proven by the current pilot:
 - Task 3: in one Haiku sample, E was cheaper/faster overall and had fewer Bash denials, while A had cleaner terminal completions in initial/full contexts. This is audit evidence, not an E-arm superiority claim.
 - Task 4: the observer-aware bridge smoke validates the checkpoint path and artifact gate. A baseline passed initial/full/stripped with observable first-green telemetry; E became functionally green in initial but failed bench-ready artifact compliance because `SKILL_RUNTIME_PROOF.md` was missing, so E resume phases were not run.
 - Task 5: the public-pass/hidden-fail data-trust trap works.
+- Task 6: the activation-metric migration pilot now has a scored local B/E sample. B and E both passed initial/full-resume/stripped-resume phases, and E produced valid skill runtime proof and workflow artifacts. Treat this as metric-migration/resumability evidence from one local pilot only, not E-superiority evidence.
 - Task 7: sharper invalidation around compatibility seams and test integrity is more useful than heavier ceremony.
 - The E arm can be runtime-proven and artifact-producing.
 
@@ -124,7 +129,7 @@ This table reflects the current pilot, not a universal result set.
 | Task 3 | piloted bridge smoke | A and E both pass public + hidden checks across initial, full-resume, and stripped-resume phases. E is artifact-producing and cheaper/faster overall in this sample, while A has cleaner terminal completions in the initial and full-resume phases. |
 | Task 4 | observer-piloted / mixed | A baseline passed initial/full/stripped with observable first-green telemetry. E became functionally green in initial but failed bench-ready artifact compliance because `SKILL_RUNTIME_PROOF.md` was missing; E resume phases were not run. This validates the observer and artifact gate, not broad skill superiority. |
 | Task 5 | piloted negative control | Public checks could pass while hidden denominator/leakage traps still failed; clearer audit trails helped inspection but did not guarantee correctness. |
-| Task 6 | under construction | Activation metric migration harness exists but should not be advertised as a completed pilot result yet. |
+| Task 6 | piloted bridge smoke | In one local B/E sample, both arms passed initial, full-resume, and stripped-resume phases. E also produced valid skill runtime proof and workflow artifacts. The scorecard and bundles are local run artifacts and are not committed to source. Treat this as single-pilot audit and resumability evidence only. |
 | Task 7 | piloted / hardened | Stronger settings saturated on behavior; weaker settings exposed API seam and test-integrity failures. The hardening lesson was sharper invalidation, not more process. |
 
 ### Illustrative current-pilot scorecard rows
@@ -143,6 +148,8 @@ These rows are examples of the current scorecard shape. They are not a complete 
 | Task 4 | E ai-engineering-skills | initial green / bench-ready fail | inactive | Functionally green in initial, but bench-ready artifact compliance failed because `SKILL_RUNTIME_PROOF.md` was missing; E resume phases were not run. |
 | Task 5 | A baseline | initial_fail / hidden fail | inactive | Expected negative result from the public-pass / hidden-fail trap. |
 | Task 5 | E ai-engineering-skills | initial_fail / skill proof + artifacts / hidden fail | inactive | Skill proof and workflow artifacts are present, but the hidden trust gate still fails. |
+| Task 6 | B strong-no-skill | green | inactive | Public + hidden checks passed across initial, full-resume, and stripped-resume phases in this single local sample. |
+| Task 6 | E ai-engineering-skills | green / skill proof + artifacts | active | Public + hidden checks passed across initial, full-resume, and stripped-resume phases, and validator-compatible runtime-proof artifacts were produced in this single local sample. |
 | Task 7 | B / E stronger settings | behavior saturated | varies | Strong prompting and skill routing both reached the narrow behavior in stronger settings. |
 | Task 7 | weaker settings | hidden failures exposed | varies | Compatibility seams, no-match behavior, and test-integrity checks caught fragile implementations. |
 
