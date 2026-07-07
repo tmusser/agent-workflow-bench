@@ -89,6 +89,12 @@ For agent-declared trace evidence, see [docs/skill-trace.md](docs/skill-trace.md
 - Control arm.
 - No workflow skill pack.
 
+### C Codex baseline
+
+- Codex no-skill baseline.
+- Uses the Codex-compatible smoke path in [docs/codex-runner.md](docs/codex-runner.md).
+- Keep C-arm results separate from Claude-backed pilot rows until Codex runs have been piloted under comparable settings.
+
 ### E ai-engineering-skills
 
 - Workflow-skills arm.
@@ -108,6 +114,7 @@ Proven by the current pilot:
 - Task 4: the observer-aware bridge smoke validates the checkpoint path and artifact gate. A baseline passed initial/full/stripped with observable first-green telemetry; E became functionally green in initial but failed bench-ready artifact compliance because `SKILL_RUNTIME_PROOF.md` was missing, so E resume phases were not run.
 - Task 5: the public-pass/hidden-fail data-trust trap works.
 - Task 6: the activation-metric migration pilot now has a scored local B/E sample. B and E both passed initial/full-resume/stripped-resume phases, and E produced valid skill runtime proof and workflow artifacts. Treat this as metric-migration/resumability evidence from one local pilot only, not E-superiority evidence.
+- Task 1 C-arm Codex smoke: a local Task 1 smoke completed end-to-end on July 7, 2026, producing initial, full-resume, and stripped-resume artifacts plus an eval bundle. Treat this as runner-capability evidence only.
 - Task 7: sharper invalidation around compatibility seams and test integrity is more useful than heavier ceremony.
 - The E arm can be runtime-proven and artifact-producing.
 
@@ -164,7 +171,7 @@ python -m pip install -e ".[dev]"
 python -m pytest benchmark_harness/tests -q
 ```
 
-Run one task through the smoke harness:
+Run one task through the Claude-backed smoke harness:
 
 ```bash
 TASK_SLUG=01-support-sla-boundary \
@@ -198,9 +205,22 @@ Summarize inferred skill evidence for a run:
 python -m benchmark_harness.skill_routing_summary summarize-run --run-id "$RUN_ID" --phase initial
 ```
 
+Run one task through the Codex-compatible smoke harness:
+
+```bash
+TASK_SLUG=01-support-sla-boundary \
+ARM_SLUG=C-codex \
+RUN_ID=v01pilot_01-sla-boundary_C_r1 \
+CODEX_PROMPT_MODE=stdin \
+CODEX_OUTPUT_FORMAT=json \
+CODEX_EXTRA_ARGS='--json' \
+./tools/pilot_codex_smoke.sh auto-c-r1
+```
+
 For Task 1 details and run examples, see [docs/task1.md](docs/task1.md).
 For Task 2 details and run examples, see [docs/task2.md](docs/task2.md).
 For Task 3 details and run examples, see [docs/task3.md](docs/task3.md).
+For Codex runner setup, see [docs/codex-runner.md](docs/codex-runner.md).
 For Task 5 details and run examples, see [docs/task5.md](docs/task5.md).
 For Task 7 details and run examples, see [docs/task7.md](docs/task7.md).
 For the pressure-slice workflow and summary table, see [docs/pressure-slice.md](docs/pressure-slice.md).
@@ -226,9 +246,12 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 - The scorecard still reports the older artifact-focused rows. Future columns may expose `skill_available`, `artifact_inferred`, `agent_declared_trace`, and `runtime_hook_trace`.
 - Runs without per-turn or checkpoint evidence remain final-only, so `terminal_reason=max_turns` does not imply the solution first became correct at the final turn. Efficiency claims require observable first-green telemetry.
 - Context pressure measures degradation under constrained, cluttered context. It does not by itself establish broad model superiority; compare like-for-like tasks, arms, and pressure settings.
+- A local Task 1 Codex C-arm smoke was validated on July 7, 2026 under run ID `v01pilot_01-sla-boundary_C_r1c`; treat that as runner-capability evidence only, not Codex-vs-Claude comparability.
+- Existing Claude-backed pilot rows and Codex runner evidence should remain separate unless they are piloted under comparable settings.
 
 ## 9. Roadmap
 
+- Publish the July 7, 2026 Task 1 C-arm Codex smoke as a separate, clearly labeled evidence row if you want it reflected in external score summaries.
 - Add more tasks that stress different workflow skills.
 - Keep public verification and assessment checks separate.
 - Continue publishing scorecards and bundles as generated artifacts, not source.
