@@ -120,3 +120,113 @@ def test_runner_metrics_detects_max_turns_without_saving_logs(tmp_path: Path):
 
     assert data["reached_max_turns"] is True
     assert "Agent stopped" not in json.dumps(data)
+
+
+def test_runner_metrics_parses_codex_jsonl_usage_events(tmp_path: Path):
+    stdout = tmp_path / "stdout.txt"
+    stderr = tmp_path / "stderr.txt"
+    stdout.write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "thread.started", "thread_id": "thread-123"}),
+                json.dumps({"type": "turn.started"}),
+                json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {"id": "item_0", "type": "agent_message", "text": "ok"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "turn.completed",
+                        "usage": {
+                            "input_tokens": 14891,
+                            "cached_input_tokens": 8064,
+                            "output_tokens": 24,
+                            "reasoning_output_tokens": 17,
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    stderr.write_text("Reading additional input from stdin...\n", encoding="utf-8")
+
+    data = runner_metrics.build_run_metrics(
+        run_id="vtest_codex_jsonl",
+        task_slug="01-support-sla-boundary",
+        arm_slug="C-codex",
+        label="initial",
+        provider="codex",
+        runner="codex-cli",
+        model="codex-default",
+        exit_code=0,
+        start_ns=0,
+        end_ns=2_000_000_000,
+        stdout_path=stdout,
+        stderr_path=stderr,
+        output_format="json",
+    )
+
+    assert data["input_tokens"] == 14891
+    assert data["cached_input_tokens"] == 8064
+    assert data["output_tokens"] == 24
+    assert data["reasoning_output_tokens"] == 17
+    assert data["actual_turns"] == 1
+    assert data["reached_max_turns"] is False
+
+
+def test_runner_metrics_handles_invalid_json_stdout_without_copying_content(tmp_path: Path):
+    stdout = tmp_path / "stdout.txt"
+    stderr = tmp_path / "stderr.txt"
+    stdout.write_text("{not json}\nSECRET\n", encoding="utf-8")
+    stderr.write_text("", encoding="utf-8")
+
+    data = runner_metrics.build_run_metrics(
+        run_id="vtest_invalid_json",
+        task_slug="01-support-sla-boundary",
+        arm_slug="C-codex",
+        label="initial",
+        provider="codex",
+        runner="codex-cli",
+        model="codex-default",
+        exit_code=0,
+        start_ns=0,
+        end_ns=1,
+        stdout_path=stdout,
+        stderr_path=stderr,
+        output_format="json",
+    )
+
+    serialized = json.dumps(data)
+    assert "SECRET" not in serialized
+    assert "input_tokens" not in data
+    assert data["reached_max_turns"] is False
+
+
+def test_runner_metrics_uses_zero_counts_for_missing_output_files(tmp_path: Path):
+    data = runner_metrics.build_run_metrics(
+        run_id="vtest_missing_outputs",
+        task_slug="01-support-sla-boundary",
+        arm_slug="C-codex",
+        label="initial",
+        provider="codex",
+        runner="codex-cli",
+        model="codex-default",
+        exit_code=7,
+        start_ns=0,
+        end_ns=1,
+        stdout_path=tmp_path / "missing-stdout.txt",
+        stderr_path=tmp_path / "missing-stderr.txt",
+        output_format="text",
+    )
+
+    assert data["runner_exit_code"] == 7
+    assert data["codex_exit_code"] == 7
+    assert data["stdout_bytes"] == 0
+    assert data["stderr_bytes"] == 0
+    assert data["stdout_lines"] == 0
+    assert data["stderr_lines"] == 0
+    assert data["reached_max_turns"] == "unknown"

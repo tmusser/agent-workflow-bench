@@ -20,6 +20,7 @@ TOKEN_KEYS = (
     "total_tokens",
     "cached_input_tokens",
     "reasoning_tokens",
+    "reasoning_output_tokens",
     "prompt_cache_hit_tokens",
     "prompt_cache_miss_tokens",
 )
@@ -33,6 +34,7 @@ USAGE_TOKEN_KEYS = (
     "total_tokens",
     "cached_input_tokens",
     "reasoning_tokens",
+    "reasoning_output_tokens",
     "cache_creation_input_tokens",
     "cache_read_input_tokens",
     "prompt_cache_hit_tokens",
@@ -114,12 +116,42 @@ def _copy_safe_json_fields(data: dict[str, object], raw: Mapping[str, Any]) -> N
 def _parse_json_stdout(data: dict[str, object], stdout_text: str) -> None:
     if not stdout_text.strip():
         return
+
+    def copy_from_mapping(raw: Mapping[str, Any]) -> None:
+        _copy_safe_json_fields(data, raw)
+
+    def copy_from_event_stream(events: list[Mapping[str, Any]]) -> None:
+        completed_turns = 0
+        for event in events:
+            copy_from_mapping(event)
+            if str(event.get("type") or "").strip().lower() == "turn.completed":
+                completed_turns += 1
+        if completed_turns and data.get("actual_turns") is None:
+            data["actual_turns"] = completed_turns
+
     try:
         raw = json.loads(stdout_text)
     except json.JSONDecodeError:
+        events: list[Mapping[str, Any]] = []
+        for line in stdout_text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                event = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event, Mapping):
+                events.append(event)
+        if events:
+            copy_from_event_stream(events)
         return
     if isinstance(raw, Mapping):
-        _copy_safe_json_fields(data, raw)
+        copy_from_mapping(raw)
+    elif isinstance(raw, list):
+        mapping_events = [item for item in raw if isinstance(item, Mapping)]
+        if mapping_events:
+            copy_from_event_stream(mapping_events)
 
 
 def _max_turns_status(stdout_text: str, stderr_text: str, data: Mapping[str, object]) -> bool | str:

@@ -109,6 +109,64 @@ NEXT MANUAL STEP
 EOF_INSTRUCTIONS
 }
 
+split_shell_words_or_die() {
+  local value="$1"
+  local env_name="$2"
+  python -m benchmark_harness.shell_words -- "$value" 2> >(sed "s/^/ERROR: ${env_name}: /" >&2)
+}
+
+append_shell_words_or_die() {
+  local value="$1"
+  local env_name="$2"
+  local word
+  while IFS= read -r word; do
+    [[ -n "$word" ]] || continue
+    CODEX_COMMAND_PARTS+=("$word")
+  done < <(split_shell_words_or_die "$value" "$env_name")
+}
+
+validate_prompt_mode() {
+  case "$CODEX_PROMPT_MODE" in
+    arg|stdin|file) ;;
+    *)
+      echo "ERROR: unknown CODEX_PROMPT_MODE=$CODEX_PROMPT_MODE" >&2
+      echo "Use one of: arg, stdin, file." >&2
+      exit 2
+      ;;
+  esac
+}
+
+warn_if_bare_codex_without_subcommand() {
+  if [[ -n "$CODEX_SUBCOMMAND" ]]; then
+    return 0
+  fi
+  if [[ "$(basename "$CODEX_CMD")" == "codex" ]]; then
+    echo "WARNING: CODEX_SUBCOMMAND is empty while CODEX_CMD resolves to bare codex." >&2
+    echo "Bare codex starts the interactive CLI; for non-interactive smoke runs prefer CODEX_SUBCOMMAND=exec" >&2
+    echo "or point CODEX_CMD at a wrapper that already invokes codex exec with your preferred flags." >&2
+  fi
+}
+
+lowercase() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+append_permission_args() {
+  case "$CODEX_PERMISSION_MODE" in
+    read-only|workspace-write|danger-full-access)
+      CODEX_COMMAND_PARTS+=(-s "$CODEX_PERMISSION_MODE")
+      ;;
+    dangerously-bypass-approvals-and-sandbox)
+      CODEX_COMMAND_PARTS+=(--dangerously-bypass-approvals-and-sandbox)
+      ;;
+    "")
+      ;;
+    *)
+      echo "WARNING: unrecognized CODEX_PERMISSION_MODE=$CODEX_PERMISSION_MODE; recording it in metadata only." >&2
+      ;;
+  esac
+}
+
 run_preflight_setup() {
   require_root
   TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh setup
@@ -183,18 +241,37 @@ write_provenance() {
 build_codex_command() {
   CODEX_COMMAND_PARTS=("$CODEX_CMD")
   if [[ -n "$CODEX_SUBCOMMAND" ]]; then
-    # shellcheck disable=SC2206
-    local sub_parts=($CODEX_SUBCOMMAND)
-    CODEX_COMMAND_PARTS+=("${sub_parts[@]}")
+    append_shell_words_or_die "$CODEX_SUBCOMMAND" "CODEX_SUBCOMMAND" || exit 2
   fi
+  append_permission_args
   if [[ "$CODEX_PASS_MODEL_FLAG" == "1" && -n "$CODEX_MODEL" ]]; then
     CODEX_COMMAND_PARTS+=(--model "$CODEX_MODEL")
   fi
   if [[ -n "$CODEX_EXTRA_ARGS" ]]; then
-    # shellcheck disable=SC2206
-    local extra_parts=($CODEX_EXTRA_ARGS)
-    CODEX_COMMAND_PARTS+=("${extra_parts[@]}")
+    append_shell_words_or_die "$CODEX_EXTRA_ARGS" "CODEX_EXTRA_ARGS" || exit 2
   fi
+}
+
+command_parts_include_json_flag() {
+  local part
+  for part in "${CODEX_COMMAND_PARTS[@]}"; do
+    if [[ "$part" == "--json" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+warn_if_json_metrics_lack_json_stdout() {
+  if [[ "$(lowercase "$CODEX_OUTPUT_FORMAT")" != "json" ]]; then
+    return 0
+  fi
+  if command_parts_include_json_flag; then
+    return 0
+  fi
+  echo "WARNING: CODEX_OUTPUT_FORMAT=json is set, but the configured command does not include --json." >&2
+  echo "run_metrics.json will still be written, but token/turn fields will only populate when stdout is machine-readable JSON/JSONL." >&2
+  echo "For the stock Codex CLI, add CODEX_EXTRA_ARGS='--json' or use a wrapper script." >&2
 }
 
 run_codex_agent() {
@@ -204,6 +281,7 @@ run_codex_agent() {
   local label="$4"
 
   require_root
+  validate_prompt_mode
   mkdir -p "$out_dir"
   if [[ ! -d "$repo" ]]; then
     echo "ERROR: repo not found: $repo" >&2
@@ -235,6 +313,8 @@ run_codex_agent() {
 
   write_provenance "$out_dir" "$label"
   build_codex_command
+  warn_if_bare_codex_without_subcommand
+  warn_if_json_metrics_lack_json_stdout
 
   local start_ns end_ns exit_code
   start_ns="$(python - <<'PY'
@@ -255,10 +335,6 @@ PY
         ;;
       file)
         "${CODEX_COMMAND_PARTS[@]}" "$prompt_abs" > "$stdout_abs" 2> "$stderr_abs"
-        ;;
-      *)
-        echo "ERROR: unknown CODEX_PROMPT_MODE=$CODEX_PROMPT_MODE" >&2
-        exit 2
         ;;
     esac
   )
@@ -311,6 +387,7 @@ collect_initial() {
   require_root
   TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh collect-initial
   echo
+  echo "Codex note: for this C-arm flow, ignore the shared Claude-oriented manual text above."
   echo "Next Codex command:"
   echo "  ./tools/pilot_codex_smoke.sh run-full-codex"
 }
@@ -323,6 +400,7 @@ collect_full() {
   require_root
   TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh collect-full
   echo
+  echo "Codex note: for this C-arm flow, ignore the shared Claude-oriented manual text above."
   echo "Next Codex command:"
   echo "  ./tools/pilot_codex_smoke.sh run-stripped-codex"
 }
@@ -354,27 +432,33 @@ auto_c_r1() {
   echo "Running full-auto C-codex r1 smoke."
   echo "This uses the configured Codex command: ${CODEX_CMD} ${CODEX_SUBCOMMAND}"
   echo
-  run_preflight_setup
-  check_codex_cli
-  reset_run_data_for_auto
-  init_run
-  run_initial_codex
-  collect_initial
-  run_full_codex
-  collect_full
-  run_stripped_codex
+  run_preflight_setup || return $?
+  check_codex_cli || return $?
+  reset_run_data_for_auto || return $?
+  init_run || return $?
+  run_initial_codex || return $?
+  collect_initial || return $?
+  run_full_codex || return $?
+  collect_full || return $?
+  run_stripped_codex || return $?
   collect_stripped
 }
 
 status_run() {
   require_root
+  validate_prompt_mode
+  build_codex_command
   echo "TASK_SLUG=$TASK_SLUG"
   echo "TASK_ID=$TASK_ID"
   echo "TASK_NAME=$TASK_NAME"
   echo "RUN_ID=$RUN_ID"
   echo "ARM_SLUG=$ARM_SLUG"
   echo "CODEX=${CODEX_CMD} ${CODEX_SUBCOMMAND}"
+  echo "CODEX_PROMPT_MODE=$CODEX_PROMPT_MODE"
+  echo "CODEX_OUTPUT_FORMAT=$CODEX_OUTPUT_FORMAT"
   echo
+  warn_if_bare_codex_without_subcommand
+  warn_if_json_metrics_lack_json_stdout
   for f in \
     "$RUN_DIR/prompt.md" \
     "$RUN_DIR/codex_stdout.txt" \

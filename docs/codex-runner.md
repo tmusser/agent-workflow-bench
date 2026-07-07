@@ -12,6 +12,22 @@ The goal is runner compatibility, not a new benchmark result. Do not claim Codex
 - It writes existing `run_provenance.json` records before each Codex run.
 - Existing collect steps, hidden evaluators, resume workspaces, bundles, and telemetry collection are reused.
 
+## Validated local smoke
+
+On July 7, 2026, a local Task 1 C-arm smoke completed end-to-end with:
+
+```bash
+TASK_SLUG=01-support-sla-boundary \
+ARM_SLUG=C-codex \
+RUN_ID=v01pilot_01-sla-boundary_C_r1c \
+CODEX_PROMPT_MODE=stdin \
+CODEX_OUTPUT_FORMAT=json \
+CODEX_EXTRA_ARGS='--json' \
+./tools/pilot_codex_smoke.sh auto-c-r1
+```
+
+That run produced local initial/full/stripped artifacts plus `v01pilot_01-sla-boundary_C_r1c-eval-bundle.tar.gz`. This is runner-capability evidence only. It does not establish Codex-vs-Claude comparability or broader benchmark performance.
+
 ## What is intentionally not claimed
 
 - This does not prove Codex result quality.
@@ -51,6 +67,8 @@ Supported prompt modes:
 | `stdin` | Pipe prompt contents to the command's stdin. |
 | `file` | Pass the local prompt file path as the final command argument. |
 
+`CODEX_SUBCOMMAND=""` is supported for wrapper-based setups where `CODEX_CMD` already resolves to a non-interactive runner. It is not recommended with bare `codex`, which launches the interactive CLI instead of the `exec` path.
+
 ## Useful environment variables
 
 | Variable | Default | Meaning |
@@ -61,11 +79,13 @@ Supported prompt modes:
 | `CODEX_PASS_MODEL_FLAG` | `0` | Set to `1` to pass `--model "$CODEX_MODEL"` to the command. |
 | `CODEX_EFFORT` | `low` | Metadata effort label. |
 | `CODEX_MAX_TURNS` | `20` | Metadata max-turn label. |
-| `CODEX_PERMISSION_MODE` | `workspace-write` | Metadata permission label. |
-| `CODEX_OUTPUT_FORMAT` | `text` | Set to `json` to parse safe token/timing metadata from stdout JSON. |
-| `CODEX_EXTRA_ARGS` | empty | Space-separated extra CLI flags. Keep secrets and prompt text out of this value. |
+| `CODEX_PERMISSION_MODE` | `workspace-write` | Sandbox/permission mode to pass to `codex exec` when recognized (`read-only`, `workspace-write`, `danger-full-access`, or `dangerously-bypass-approvals-and-sandbox`), and also record in metadata. |
+| `CODEX_OUTPUT_FORMAT` | `text` | Metadata hint. Set to `json` only when your command actually emits machine-readable JSON/JSONL on stdout, for example `CODEX_EXTRA_ARGS='--json'` with `codex exec`. |
+| `CODEX_EXTRA_ARGS` | empty | Shell-style extra CLI flags. Fine for simple local flags; prefer a wrapper script for secrets, shell logic, or anything quoting-sensitive enough that you would not want to type it inline. |
 | `CODEX_PROMPT_MODE` | `arg` | Prompt delivery mode: `arg`, `stdin`, or `file`. |
 | `ENABLE_TELEMETRY` | unset | When truthy, collect local telemetry after each helper command. |
+
+`benchmark_harness.runner_metrics` understands both single JSON documents and Codex JSONL event streams. With the stock Codex CLI, pair `CODEX_OUTPUT_FORMAT=json` with `CODEX_EXTRA_ARGS='--json'` if you want token counts and turn metadata populated in `run_metrics.json`.
 
 ## Manual flow
 
