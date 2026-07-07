@@ -54,8 +54,12 @@ def test_task6_defaults_use_task_specific_wrappers():
 
     assert defaults_b["TASK_ID_DEFAULT"] == "06-activation"
     assert defaults_b["HIDDEN_EVALUATOR_MODULE_DEFAULT"] == "benchmark_harness.evaluators.task6_hidden_evaluator"
+    assert defaults_b["RESUME_HIDDEN_EVALUATOR_MODULE_DEFAULT"] == "benchmark_harness.evaluators.task6_resume_evaluator"
+    assert defaults_b["FRESH_SESSION_PROMPT_DEFAULT"] == "benchmark_harness/protocols/FRESH_SESSION_PROMPT_TASK6.md"
     assert defaults_b["ARM_WRAPPER_DEFAULT"] == "arms/B-strong-no-skill-task6.md"
     assert defaults_b["EXPECTED_STARTER_VERIFY_FAILURE_DEFAULT"] == "true"
+    assert defaults_e["RESUME_HIDDEN_EVALUATOR_MODULE_DEFAULT"] == "benchmark_harness.evaluators.task6_resume_evaluator"
+    assert defaults_e["FRESH_SESSION_PROMPT_DEFAULT"] == "benchmark_harness/protocols/FRESH_SESSION_PROMPT_TASK6.md"
     assert defaults_e["ARM_WRAPPER_DEFAULT"] == "arms/E-ai-engineering-skills-task6.md"
 
 
