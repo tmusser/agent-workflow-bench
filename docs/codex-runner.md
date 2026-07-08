@@ -10,6 +10,7 @@ The goal is runner compatibility, not a new benchmark result. Do not claim Codex
 - It runs a configurable Codex CLI command in the initial, full-resume, and stripped-resume workspaces.
 - It writes metadata-only `run_metrics.json` through `benchmark_harness.runner_metrics`.
 - It writes existing `run_provenance.json` records before each Codex run.
+- It writes deterministic recovery artifacts, `skill_runtime_recovery.json` and `skill_runtime_recovery.md`, after collection so blocked rows and proof-missing rows are classified without fabricating `SKILL_RUNTIME_PROOF.md`.
 - Existing collect steps, hidden evaluators, resume workspaces, bundles, and telemetry collection are reused.
 
 ## Validated local smoke
@@ -86,6 +87,8 @@ Supported prompt modes:
 | `ENABLE_TELEMETRY` | unset | When truthy, collect local telemetry after each helper command. |
 
 `benchmark_harness.runner_metrics` understands both single JSON documents and Codex JSONL event streams. With the stock Codex CLI, pair `CODEX_OUTPUT_FORMAT=json` with `CODEX_EXTRA_ARGS='--json'` if you want token counts and turn metadata populated in `run_metrics.json`.
+
+After `collect-initial`, the Codex runner also records `skill_runtime_recovery.json` / `.md`. If the initial row is blocked before a real task attempt, the helper stops before the resume phases. If the row merely failed functionally or missed the proof artifact after a real attempt, the helper keeps going so the later phases can still be inspected.
 
 ## Manual flow
 

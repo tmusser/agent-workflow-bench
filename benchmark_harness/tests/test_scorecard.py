@@ -549,6 +549,66 @@ def test_scorecard_handles_initial_fail_bundle_with_workflow_artifacts(tmp_path:
     assert row["agent_side_verification_claim"] == "claimed_blocked"
 
 
+def test_scorecard_uses_recovery_public_status_for_blocked_initial_rows(tmp_path: Path):
+    run_id = "v03pilot_03-refund-grain_E_g54mini_r1"
+    files = {
+        **base_initial_fail_run_files(
+            run_id,
+            failure_reason="missing required blocker themes: denominator inconsistency, leakage or post-treatment field risk",
+        ),
+        f"benchmark-data/runs/{run_id}/skill_runtime_recovery.json": json.dumps(
+            {
+                "schema_version": 1,
+                "run_id": run_id,
+                "task_slug": "03-refund-grain",
+                "arm_slug": "E-ai-engineering-skills",
+                "phase": "initial",
+                "prompt_explicit": True,
+                "collect_exit_code": 1,
+                "codex_exit_code": 0,
+                "reached_max_turns": True,
+                "skill_runtime_context_present": True,
+                "skill_runtime_context_valid": True,
+                "skill_runtime_proof_present": False,
+                "skill_runtime_proof_valid": False,
+                "workflow_artifacts": [],
+                "changed_files": [],
+                "changed_file_count": 0,
+                "diff_bytes": 0,
+                "diff_stat_bytes": 0,
+                "verification_exit": 0,
+                "hidden_evaluator_exit": 1,
+                "functional_green": False,
+                "task_attempted": False,
+                "initial_not_ready_present": True,
+                "initial_not_ready_skill_runtime_proof": "missing",
+                "proof_required": True,
+                "classification": "usage_limit_blocked_before_attempt",
+                "public_status": "blocked: usage limit before task attempt",
+                "failure_category": "environment_failure",
+                "stop_after_initial": True,
+                "failure_reason": "blocked: usage limit before task attempt",
+                "evidence_paths": [],
+            },
+            indent=2,
+        )
+        + "\n",
+        f"benchmark-data/runs/{run_id}/skill_runtime_recovery.md": "# Skill Runtime Recovery\n",
+    }
+    bundle = make_bundle(tmp_path, run_id, files, bundle_type="initial-fail")
+
+    row = scorecard.score_bundle(bundle)
+
+    assert row["failure_reason"] == "blocked: usage limit before task attempt"
+    assert row["initial_recovery_classification"] == "usage_limit_blocked_before_attempt"
+    assert row["initial_recovery_public_status"] == "blocked: usage limit before task attempt"
+    assert row["initial_recovery_failure_category"] == "environment_failure"
+    assert row["initial_recovery_stop_after_initial"] is True
+    assert row["initial_recovery_task_attempted"] is False
+    assert row["initial_recovery_skill_runtime_context_present"] is True
+    assert row["initial_recovery_skill_runtime_proof_present"] is False
+
+
 def test_hidden_exit_inference_ignores_no_hidden_contract_failed(tmp_path: Path):
     path = tmp_path / "hidden_evaluator_final.txt"
     path.write_text("no hidden contract failed\nHidden Task 4 evaluator passed\n", encoding="utf-8")
