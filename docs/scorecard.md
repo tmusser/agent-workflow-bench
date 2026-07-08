@@ -57,6 +57,7 @@ Scorecard rows are meant to compare:
 - `pressure_level`, `pressure_seed`, and `pressure_tokens_estimated` describe the synthetic background-context load injected by the runner.
 - `estimated_context_utilization` is pressure-only: `pressure_tokens_estimated / context_window_tokens`. It does not represent the full rendered prompt or all model-visible state.
 - `max_context_utilization` is only populated when actual usage metadata is available from the run.
+- When `skill_runtime_recovery.json` is present, the scorecard uses it to distinguish `blocked: usage limit before task attempt`, `blocked: environment before task attempt`, and `failed: missing proof after task attempt` from plain functional failures.
 - Task 5 yellow rows are useful negative results: they show the initial gate failed for the expected reasons, not that the scorecard itself is broken.
 
 The scorecard is a reporting utility, not a new benchmark task.

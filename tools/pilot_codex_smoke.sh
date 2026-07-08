@@ -89,6 +89,47 @@ copy_clipboard() {
   fi
 }
 
+rebuild_current_eval_bundle() {
+  local run_id="${RUN_ID:-}"
+  local bundle inputs candidate
+
+  if [[ -z "$run_id" ]]; then
+    return 0
+  fi
+
+  bundle="${run_id}-eval-bundle.tar.gz"
+  if [[ ! -f "$bundle" ]]; then
+    return 0
+  fi
+
+  inputs=()
+  for candidate in \
+    "benchmark-data/runs/${run_id}" \
+    "benchmark-data/resume-runs/${run_id}_full" \
+    "benchmark-data/resume-runs/${run_id}_stripped" \
+    "benchmark-data/workspaces/${run_id}/repo" \
+    "benchmark-data/resume-workspaces/${run_id}"
+  do
+    if [[ -e "$candidate" ]]; then
+      inputs+=("$candidate")
+    fi
+  done
+
+  if [[ "${#inputs[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  COPYFILE_DISABLE=1 tar \
+    --exclude='._*' \
+    --exclude='*/._*' \
+    --exclude='*/.venv' \
+    --exclude='*/__pycache__' \
+    --exclude='*/.pytest_cache' \
+    --exclude='*/.git' \
+    -czf "$bundle" \
+    "${inputs[@]}"
+}
+
 print_run_agent_instructions() {
   local repo="$1"
   local prompt_file="$2"
@@ -145,6 +186,52 @@ warn_if_bare_codex_without_subcommand() {
     echo "Bare codex starts the interactive CLI; for non-interactive smoke runs prefer CODEX_SUBCOMMAND=exec" >&2
     echo "or point CODEX_CMD at a wrapper that already invokes codex exec with your preferred flags." >&2
   fi
+}
+
+write_skill_runtime_recovery() {
+  local run_dir="$1"
+  local workspace_root="$2"
+  local phase="$3"
+  local collect_exit_code="$4"
+  local prompt_file="$5"
+  local root_dir
+
+  require_root
+  root_dir="$(pwd)"
+  python -m benchmark_harness.skill_runtime_recovery write \
+    --run-dir "${root_dir}/${run_dir}" \
+    --workspace-root "${root_dir}/${workspace_root}" \
+    --prompt-file "${root_dir}/${prompt_file}" \
+    --run-id "$RUN_ID" \
+    --task-slug "$TASK_SLUG" \
+    --arm-slug "$ARM_SLUG" \
+    --phase "$phase" \
+    --collect-exit-code "$collect_exit_code"
+}
+
+read_skill_runtime_recovery_field() {
+  local run_dir="$1"
+  local field="$2"
+  local root_dir
+
+  require_root
+  root_dir="$(pwd)"
+  python - "${root_dir}/${run_dir}/skill_runtime_recovery.json" "$field" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+field = sys.argv[2]
+data = json.loads(path.read_text(encoding="utf-8"))
+value = data.get(field)
+if isinstance(value, bool):
+    print("true" if value else "false")
+elif value is None:
+    print("")
+else:
+    print(value)
+PY
 }
 
 lowercase() {
@@ -385,7 +472,29 @@ run_initial_codex() {
 
 collect_initial() {
   require_root
+  local collect_exit_code stop_after_initial
+
+  set +e
   TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh collect-initial
+  collect_exit_code=$?
+  set -e
+
+  write_skill_runtime_recovery "$RUN_DIR" "$WORK" "initial" "$collect_exit_code" "$RUN_DIR/prompt.md"
+  stop_after_initial="$(read_skill_runtime_recovery_field "$RUN_DIR" "stop_after_initial")"
+  rebuild_current_eval_bundle || true
+
+  echo
+  echo "Codex recovery status: $(read_skill_runtime_recovery_field "$RUN_DIR" "public_status")"
+  if [[ "$stop_after_initial" == "true" ]]; then
+    echo "STOP: recovery classified the initial row as blocked."
+    echo "See: $RUN_DIR/skill_runtime_recovery.md"
+    return 1
+  fi
+
+  if [[ "$collect_exit_code" -ne 0 ]]; then
+    echo "WARNING: collect-initial returned nonzero, but recovery did not classify the row as blocked."
+    echo "See: $RUN_DIR/skill_runtime_recovery.md"
+  fi
   echo
   echo "Codex note: for this C-arm flow, ignore the shared Claude-oriented manual text above."
   echo "Next Codex command:"
@@ -398,11 +507,24 @@ run_full_codex() {
 
 collect_full() {
   require_root
+  local collect_exit_code
+
+  set +e
   TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh collect-full
+  collect_exit_code=$?
+  set -e
+
+  write_skill_runtime_recovery "$FULL_OUT" "$FULL_REPO" "full" "$collect_exit_code" "$RUN_DIR/prompt.md"
+  rebuild_current_eval_bundle || true
+
+  if [[ "$collect_exit_code" -ne 0 ]]; then
+    echo "WARNING: collect-full returned nonzero. See: $FULL_OUT/skill_runtime_recovery.md"
+  fi
   echo
   echo "Codex note: for this C-arm flow, ignore the shared Claude-oriented manual text above."
   echo "Next Codex command:"
   echo "  ./tools/pilot_codex_smoke.sh run-stripped-codex"
+  return "$collect_exit_code"
 }
 
 run_stripped_codex() {
@@ -411,7 +533,20 @@ run_stripped_codex() {
 
 collect_stripped() {
   require_root
+  local collect_exit_code
+
+  set +e
   TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh collect-stripped
+  collect_exit_code=$?
+  set -e
+
+  write_skill_runtime_recovery "$STRIPPED_OUT" "$STRIPPED_REPO" "stripped" "$collect_exit_code" "$RUN_DIR/prompt.md"
+  rebuild_current_eval_bundle || true
+
+  if [[ "$collect_exit_code" -ne 0 ]]; then
+    echo "WARNING: collect-stripped returned nonzero. See: $STRIPPED_OUT/skill_runtime_recovery.md"
+  fi
+  return "$collect_exit_code"
 }
 
 reset_run_data_for_auto() {
@@ -466,6 +601,8 @@ status_run() {
     "$RUN_DIR/codex_exit_code.txt" \
     "$RUN_DIR/run_metrics.json" \
     "$RUN_DIR/run_provenance.json" \
+    "$RUN_DIR/skill_runtime_recovery.json" \
+    "$RUN_DIR/skill_runtime_recovery.md" \
     "$RUN_DIR/verification_final.txt" \
     "$RUN_DIR/hidden_evaluator_final.txt" \
     "$RUN_DIR/diff.patch" \
@@ -474,11 +611,15 @@ status_run() {
     "$FULL_OUT/codex_exit_code.txt" \
     "$FULL_OUT/run_metrics.json" \
     "$FULL_OUT/run_provenance.json" \
+    "$FULL_OUT/skill_runtime_recovery.json" \
+    "$FULL_OUT/skill_runtime_recovery.md" \
     "$STRIPPED_OUT/codex_stdout.txt" \
     "$STRIPPED_OUT/codex_stderr.txt" \
     "$STRIPPED_OUT/codex_exit_code.txt" \
     "$STRIPPED_OUT/run_metrics.json" \
-    "$STRIPPED_OUT/run_provenance.json"; do
+    "$STRIPPED_OUT/run_provenance.json" \
+    "$STRIPPED_OUT/skill_runtime_recovery.json" \
+    "$STRIPPED_OUT/skill_runtime_recovery.md"; do
     if [[ -e "$f" ]]; then
       echo "✓ $f"
     else

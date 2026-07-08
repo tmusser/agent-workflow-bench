@@ -114,6 +114,20 @@ ROW_FIELDS = [
     "initial_finalizer_created_skill_runtime_proof",
     "failure_stage",
     "failure_reason",
+    "initial_recovery_classification",
+    "initial_recovery_public_status",
+    "initial_recovery_failure_category",
+    "initial_recovery_failure_reason",
+    "initial_recovery_stop_after_initial",
+    "initial_recovery_collect_exit_code",
+    "initial_recovery_codex_exit_code",
+    "initial_recovery_prompt_explicit",
+    "initial_recovery_task_attempted",
+    "initial_recovery_skill_runtime_context_present",
+    "initial_recovery_skill_runtime_context_valid",
+    "initial_recovery_skill_runtime_proof_present",
+    "initial_recovery_skill_runtime_proof_valid",
+    "initial_recovery_reached_max_turns",
     "initial_diff_bytes",
     "initial_diff_files",
     "skill_runtime_proof_present",
@@ -663,6 +677,26 @@ def _finalizer_summary(run_dir: Path) -> dict[str, object]:
     }
 
 
+def _recovery_summary(run_dir: Path) -> dict[str, object]:
+    summary = _read_json(run_dir / "skill_runtime_recovery.json") or {}
+    return {
+        "classification": summary.get("classification"),
+        "public_status": summary.get("public_status"),
+        "failure_category": summary.get("failure_category"),
+        "failure_reason": summary.get("failure_reason"),
+        "stop_after_initial": bool(summary.get("stop_after_initial", False)),
+        "collect_exit_code": summary.get("collect_exit_code"),
+        "codex_exit_code": summary.get("codex_exit_code"),
+        "prompt_explicit": bool(summary.get("prompt_explicit", False)),
+        "task_attempted": bool(summary.get("task_attempted", False)),
+        "skill_runtime_context_present": bool(summary.get("skill_runtime_context_present", False)),
+        "skill_runtime_context_valid": bool(summary.get("skill_runtime_context_valid", False)),
+        "skill_runtime_proof_present": bool(summary.get("skill_runtime_proof_present", False)),
+        "skill_runtime_proof_valid": bool(summary.get("skill_runtime_proof_valid", False)),
+        "reached_max_turns": summary.get("reached_max_turns", "unknown"),
+    }
+
+
 def _prefixed_finalizer(prefix: str, finalizer_summary: dict[str, object]) -> dict[str, object]:
     return {f"{prefix}_finalizer_{field_name}": finalizer_summary.get(summary_key) for summary_key, field_name in FINALIZER_FIELD_MAP.items()}
 
@@ -719,6 +753,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
         stripped_resume_run = paths["stripped_resume_run"]
         initial_metrics = _read_json(initial_run / "run_metrics.json") or {}
         initial_provenance = _read_json(initial_run / "run_provenance.json") or {}
+        initial_recovery = _recovery_summary(initial_run)
         initial_not_ready = initial_run / "INITIAL_NOT_READY.txt"
         initial_ready = not initial_not_ready.exists()
 
@@ -810,7 +845,25 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
             **_prefixed_latency("initial", initial_latency),
             **_prefixed_finalizer("initial", initial_finalizer),
             "failure_stage": None if initial_ready else "initial",
-            "failure_reason": _failure_reason_from_initial_run(initial_run) if not initial_ready else None,
+            "failure_reason": (
+                initial_recovery.get("failure_reason")
+                if not initial_ready and initial_recovery.get("failure_reason")
+                else _failure_reason_from_initial_run(initial_run) if not initial_ready else None
+            ),
+            "initial_recovery_classification": initial_recovery.get("classification"),
+            "initial_recovery_public_status": initial_recovery.get("public_status"),
+            "initial_recovery_failure_category": initial_recovery.get("failure_category"),
+            "initial_recovery_failure_reason": initial_recovery.get("failure_reason"),
+            "initial_recovery_stop_after_initial": initial_recovery.get("stop_after_initial"),
+            "initial_recovery_collect_exit_code": initial_recovery.get("collect_exit_code"),
+            "initial_recovery_codex_exit_code": initial_recovery.get("codex_exit_code"),
+            "initial_recovery_prompt_explicit": initial_recovery.get("prompt_explicit"),
+            "initial_recovery_task_attempted": initial_recovery.get("task_attempted"),
+            "initial_recovery_skill_runtime_context_present": initial_recovery.get("skill_runtime_context_present"),
+            "initial_recovery_skill_runtime_context_valid": initial_recovery.get("skill_runtime_context_valid"),
+            "initial_recovery_skill_runtime_proof_present": initial_recovery.get("skill_runtime_proof_present"),
+            "initial_recovery_skill_runtime_proof_valid": initial_recovery.get("skill_runtime_proof_valid"),
+            "initial_recovery_reached_max_turns": initial_recovery.get("reached_max_turns"),
             "initial_diff_bytes": initial_diff_bytes,
             "initial_diff_files": _count_diff_files(initial_diff_stat, initial_diff_patch),
             "skill_runtime_proof_present": skill_runtime_proof_present,
