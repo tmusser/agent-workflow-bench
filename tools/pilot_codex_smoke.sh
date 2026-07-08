@@ -259,6 +259,22 @@ run_preflight_setup() {
   TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh setup
 }
 
+write_skill_runtime_context_for_repo() {
+  local repo="$1"
+  local plugin_dir="$2"
+  require_root
+  if [[ -z "$plugin_dir" ]]; then
+    echo "ERROR: E arms require SKILL_PLUGIN_DIR so .benchmark/SKILL_RUNTIME_CONTEXT.md can be generated." >&2
+    exit 2
+  fi
+  python -m benchmark_harness.skill_runtime_context \
+    --workspace-root "$repo" \
+    --plugin-dir "$plugin_dir" \
+    --task-slug "$TASK_SLUG" \
+    --arm-slug "$ARM_SLUG" \
+    --run-id "$RUN_ID"
+}
+
 check_codex_cli() {
   require_root
   if ! command -v "$CODEX_CMD" >/dev/null 2>&1; then
@@ -279,16 +295,7 @@ init_run() {
     --metadata-out "$RUN_DIR/run_workspace_manifest.json"
 
   if [[ "$ARM_SLUG" == E-* ]]; then
-    if [[ -z "$SKILL_PLUGIN_DIR" ]]; then
-      echo "ERROR: E arms require SKILL_PLUGIN_DIR so .benchmark/SKILL_RUNTIME_CONTEXT.md can be generated." >&2
-      exit 2
-    fi
-    python -m benchmark_harness.skill_runtime_context \
-      --workspace-root "$WORK" \
-      --plugin-dir "$SKILL_PLUGIN_DIR" \
-      --task-slug "$TASK_SLUG" \
-      --arm-slug "$ARM_SLUG" \
-      --run-id "$RUN_ID"
+    write_skill_runtime_context_for_repo "$WORK" "$SKILL_PLUGIN_DIR"
   fi
 
   python -m benchmark_harness.render_prompt \
@@ -454,6 +461,20 @@ PY
     --max-turns "$CODEX_MAX_TURNS" \
     --permission-mode "$CODEX_PERMISSION_MODE"
 
+  if ! python -m benchmark_harness.agent_turn_trace summarize-codex \
+    --input "$stdout_abs" \
+    --out-dir "${root_dir}/${out_dir}" \
+    --run-id "$RUN_ID" \
+    --task-slug "$TASK_SLUG" \
+    --arm-slug "$ARM_SLUG" \
+    --phase "$label" \
+    --repo-root "$repo" \
+    --provider "$CODEX_PROVIDER" \
+    --runner "$CODEX_RUNNER" \
+    --trace-source codex_jsonl; then
+    echo "WARNING: Codex turn-trace normalization failed for $out_dir; continuing." >&2
+  fi
+
   echo "Codex run complete with exit code: $exit_code"
   echo "  stdout: $out_dir/codex_stdout.txt"
   echo "  stderr: $out_dir/codex_stderr.txt"
@@ -475,7 +496,7 @@ collect_initial() {
   local collect_exit_code stop_after_initial
 
   set +e
-  TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh collect-initial
+  TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" SKILL_PLUGIN_DIR="$SKILL_PLUGIN_DIR" ./tools/pilot_smoke.sh collect-initial
   collect_exit_code=$?
   set -e
 
@@ -510,7 +531,7 @@ collect_full() {
   local collect_exit_code
 
   set +e
-  TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh collect-full
+  TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" SKILL_PLUGIN_DIR="$SKILL_PLUGIN_DIR" ./tools/pilot_smoke.sh collect-full
   collect_exit_code=$?
   set -e
 
@@ -536,7 +557,7 @@ collect_stripped() {
   local collect_exit_code
 
   set +e
-  TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh collect-stripped
+  TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" SKILL_PLUGIN_DIR="$SKILL_PLUGIN_DIR" ./tools/pilot_smoke.sh collect-stripped
   collect_exit_code=$?
   set -e
 

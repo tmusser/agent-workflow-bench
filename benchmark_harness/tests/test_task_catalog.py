@@ -185,6 +185,23 @@ def test_codex_smoke_preflight_forwards_resolved_run_environment():
     assert 'TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh setup' in codex_runner
 
 
+def test_codex_smoke_runner_wires_trace_and_resume_context():
+    root = Path(__file__).resolve().parents[2]
+    codex_runner = (root / "tools" / "pilot_codex_smoke.sh").read_text(encoding="utf-8")
+    legacy_runner = (root / "tools" / "pilot_smoke_legacy.sh").read_text(encoding="utf-8")
+
+    assert "benchmark_harness.agent_turn_trace summarize-codex" in codex_runner
+    assert "--trace-source codex_jsonl" in codex_runner
+    assert codex_runner.index("python -m benchmark_harness.runner_metrics write") < codex_runner.index("benchmark_harness.agent_turn_trace summarize-codex")
+    assert 'TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" SKILL_PLUGIN_DIR="$SKILL_PLUGIN_DIR" ./tools/pilot_smoke.sh collect-initial' in codex_runner
+    assert 'TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" SKILL_PLUGIN_DIR="$SKILL_PLUGIN_DIR" ./tools/pilot_smoke.sh collect-full' in codex_runner
+    assert 'TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" SKILL_PLUGIN_DIR="$SKILL_PLUGIN_DIR" ./tools/pilot_smoke.sh collect-stripped' in codex_runner
+    assert 'write_skill_runtime_context_for_repo "$WORK" "$SKILL_PLUGIN_DIR"' in codex_runner
+    assert 'local plugin_dir="${2:-${CLAUDE_PLUGIN_DIR:-${SKILL_PLUGIN_DIR:-}}}"' in legacy_runner
+    assert 'write_skill_runtime_context_for_repo "$FULL_REPO" "$CLAUDE_PLUGIN_DIR"' in legacy_runner
+    assert 'write_skill_runtime_context_for_repo "$STRIPPED_REPO" "$CLAUDE_PLUGIN_DIR"' in legacy_runner
+
+
 def test_task7_fresh_session_prompt_is_task_specific():
     prompt = Path(__file__).resolve().parents[2] / "benchmark_harness" / "protocols" / "FRESH_SESSION_PROMPT_TASK7.md"
     text = prompt.read_text(encoding="utf-8")

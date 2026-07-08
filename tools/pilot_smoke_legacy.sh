@@ -270,6 +270,22 @@ run_preflight_setup() {
   echo "Setup OK."
 }
 
+write_skill_runtime_context_for_repo() {
+  local repo="$1"
+  local plugin_dir="${2:-${CLAUDE_PLUGIN_DIR:-${SKILL_PLUGIN_DIR:-}}}"
+  require_root
+  if [[ -z "$plugin_dir" ]]; then
+    echo "ERROR: E arms require CLAUDE_PLUGIN_DIR or SKILL_PLUGIN_DIR so .benchmark/SKILL_RUNTIME_CONTEXT.md can be generated." >&2
+    exit 2
+  fi
+  python -m benchmark_harness.skill_runtime_context \
+    --workspace-root "$repo" \
+    --plugin-dir "$plugin_dir" \
+    --task-slug "$TASK_SLUG" \
+    --arm-slug "$ARM_SLUG" \
+    --run-id "$RUN_ID"
+}
+
 check_claude_cli() {
   require_root
   if ! command -v "$CLAUDE_CMD" >/dev/null 2>&1; then
@@ -356,16 +372,7 @@ init_run() {
     --metadata-out "$RUN_DIR/run_workspace_manifest.json"
 
   if [[ "$ARM_SLUG" == E-* ]]; then
-    if [[ -z "$CLAUDE_PLUGIN_DIR" ]]; then
-      echo "ERROR: E arms require CLAUDE_PLUGIN_DIR so .benchmark/SKILL_RUNTIME_CONTEXT.md can be generated." >&2
-      exit 2
-    fi
-    python -m benchmark_harness.skill_runtime_context \
-      --workspace-root "$WORK" \
-      --plugin-dir "$CLAUDE_PLUGIN_DIR" \
-      --task-slug "$TASK_SLUG" \
-      --arm-slug "$ARM_SLUG" \
-      --run-id "$RUN_ID"
+    write_skill_runtime_context_for_repo "$WORK" "$CLAUDE_PLUGIN_DIR"
   fi
 
   python -m benchmark_harness.render_prompt \
@@ -897,6 +904,11 @@ EOF_NOT_READY
     --metadata-dir "benchmark-data/resume-workspaces/${RUN_ID}/stripped/metadata" \
     --condition artifact_stripped \
     --manifest "$MANIFEST"
+
+  if [[ "$ARM_SLUG" == E-* ]]; then
+    write_skill_runtime_context_for_repo "$FULL_REPO" "$CLAUDE_PLUGIN_DIR"
+    write_skill_runtime_context_for_repo "$STRIPPED_REPO" "$CLAUDE_PLUGIN_DIR"
+  fi
 
   echo "Checking metadata isolation..."
   local leaks
