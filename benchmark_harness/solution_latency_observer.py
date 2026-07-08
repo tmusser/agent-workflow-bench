@@ -12,6 +12,13 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from benchmark_harness.agent_turn_trace import (
+    AgentTurnTraceRecorder,
+    TRACE_FIDELITY_CHECKPOINT_ONLY,
+    TRACE_FIDELITY_TURN_EVENT,
+    TRACE_SOURCE_CLAUDE_MTIME_POLLING,
+    TRACE_SOURCE_CLAUDE_STREAM_JSON,
+)
 from benchmark_harness.validate_skill_runtime_proof import validate as validate_skill_runtime_proof
 
 STREAM_JSON_MODE = "stream_json"
@@ -477,6 +484,7 @@ def _run_stream_json_observer(
     current_turn = 0
     current_turn_had_file_change = False
     current_turn_checkpointed = False
+    current_turn_completed = False
     turn_checkpoint_counts: dict[str, int] = {}
     tool_use_to_name: dict[str, str] = {}
     tool_use_to_file_change: dict[str, bool] = {}
@@ -484,9 +492,22 @@ def _run_stream_json_observer(
     permission_denials_total = 0
     last_checkpoint_permission_denials_total = 0
     start_time = time.monotonic()
+    trace_recorder = AgentTurnTraceRecorder(
+        run_id=run_id,
+        task_slug=task_slug,
+        arm_slug=arm_slug,
+        phase=phase,
+        provider="claude",
+        runner="claude-cli",
+        trace_source=TRACE_SOURCE_CLAUDE_STREAM_JSON,
+        trace_fidelity=TRACE_FIDELITY_TURN_EVENT,
+        repo_root=repo_root,
+        jsonl_path=run_dir / "agent_turn_trace.jsonl",
+        summary_path=run_dir / "agent_turn_trace_summary.json",
+    )
 
     def checkpoint_current_turn(trigger: str) -> None:
-        nonlocal checkpoint_index, current_turn_checkpointed, last_checkpoint_permission_denials_total
+        nonlocal checkpoint_index, current_turn_checkpointed, current_turn_completed, last_checkpoint_permission_denials_total
         if current_message_id is None or not current_turn_had_file_change:
             return
         if current_turn_checkpointed:
@@ -510,13 +531,36 @@ def _run_stream_json_observer(
         last_checkpoint_permission_denials_total = permission_denials_total
         turn_checkpoint_counts[str(current_turn)] = turn_checkpoint_counts.get(str(current_turn), 0) + 1
         current_turn_checkpointed = True
+        if not current_turn_completed:
+            trace_recorder.record_turn_completed(
+                turn_index=current_turn,
+                provider_event_type="checkpoint",
+                message_id=current_message_id,
+                wall_seconds=record["wall_seconds"],
+                notes=[trigger],
+            )
+            current_turn_completed = True
+        trace_recorder.record_checkpoint(
+            checkpoint_index=checkpoint_index,
+            turn_index=current_turn,
+            provider_event_type="checkpoint",
+            assistant_message_id=current_message_id,
+            wall_seconds=record["wall_seconds"],
+            verify_exit=record["verify_exit"],
+            hidden_evaluator_exit=record["hidden_evaluator_exit"],
+            functional_green=record["functional_green"],
+            bench_ready_green=record["bench_ready_green"],
+            permission_denials_delta=record["permission_denials_delta"],
+            checkpoint_eval_errors=record["checkpoint_eval_errors"],
+            notes=[trigger],
+        )
         _write_text(
             run_dir / "solution_latency_checkpoints" / f"checkpoint_{checkpoint_index:04d}" / "trigger.txt",
             f"{trigger}\n",
         )
 
     def handle_event(event: dict[str, Any]) -> None:
-        nonlocal current_message_id, current_turn, current_turn_had_file_change, current_turn_checkpointed, permission_denials_total
+        nonlocal current_message_id, current_turn, current_turn_had_file_change, current_turn_checkpointed, current_turn_completed, permission_denials_total
 
         event_type = str(event.get("type") or "").lower()
         total = _event_permission_denials_total(event)
@@ -531,6 +575,19 @@ def _run_stream_json_observer(
                 current_turn += 1
                 current_turn_had_file_change = False
                 current_turn_checkpointed = False
+                current_turn_completed = False
+                trace_recorder.record_turn_started(
+                    turn_index=current_turn,
+                    provider_event_type="assistant",
+                    message_id=current_message_id,
+                    wall_seconds=round(time.monotonic() - start_time, 3),
+                )
+                trace_recorder.record_assistant_message(
+                    turn_index=current_turn,
+                    provider_event_type="assistant",
+                    message_id=current_message_id,
+                    wall_seconds=round(time.monotonic() - start_time, 3),
+                )
                 for block in _event_content(event):
                     if block.get("type") != "tool_use":
                         continue
@@ -539,6 +596,15 @@ def _run_stream_json_observer(
                     if tool_use_id and tool_name:
                         tool_use_to_name[tool_use_id] = tool_name
                         tool_use_to_file_change[tool_use_id] = _is_file_changing_tool(tool_name)
+                        trace_recorder.record_tool_use(
+                            turn_index=current_turn,
+                            provider_event_type="assistant",
+                            tool_use_id=tool_use_id,
+                            tool_name=tool_name,
+                            message_id=current_message_id,
+                            wall_seconds=round(time.monotonic() - start_time, 3),
+                            file_changing_tool=tool_use_to_file_change[tool_use_id],
+                        )
                 return
 
             for block in _event_content(event):
@@ -549,14 +615,43 @@ def _run_stream_json_observer(
                 if tool_use_id and tool_name:
                     tool_use_to_name[tool_use_id] = tool_name
                     tool_use_to_file_change[tool_use_id] = _is_file_changing_tool(tool_name)
+                    trace_recorder.record_tool_use(
+                        turn_index=current_turn or None,
+                        provider_event_type="assistant",
+                        tool_use_id=tool_use_id,
+                        tool_name=tool_name,
+                        message_id=current_message_id,
+                        wall_seconds=round(time.monotonic() - start_time, 3),
+                        file_changing_tool=tool_use_to_file_change[tool_use_id],
+                    )
 
         elif event_type == "user":
+            file_change_detected = False
             for tool_use_id in _event_tool_result_ids(event):
                 if tool_use_to_file_change.get(tool_use_id):
-                    current_turn_had_file_change = True
-                    break
+                    file_change_detected = True
+                trace_recorder.record_tool_result(
+                    turn_index=current_turn or None,
+                    provider_event_type="user",
+                    tool_use_id=tool_use_id,
+                    tool_name=tool_use_to_name.get(tool_use_id),
+                    message_id=current_message_id,
+                    wall_seconds=round(time.monotonic() - start_time, 3),
+                    file_changing_tool=tool_use_to_file_change.get(tool_use_id),
+                )
+            if file_change_detected:
+                current_turn_had_file_change = True
         elif event_type == "result":
             checkpoint_current_turn(trigger="final_result")
+            if current_message_id is not None and not current_turn_completed:
+                trace_recorder.record_turn_completed(
+                    turn_index=current_turn or None,
+                    provider_event_type="result",
+                    message_id=current_message_id,
+                    wall_seconds=round(time.monotonic() - start_time, 3),
+                    notes=["final result observed"],
+                )
+                current_turn_completed = True
 
     while True:
         item = stdout_queue.get()
@@ -582,6 +677,12 @@ def _run_stream_json_observer(
         checkpoint_current_turn(trigger="stream_end")
 
     exit_code = proc.returncode or 0
+    trace_recorder.record_run_result(
+        provider_event_type="result",
+        wall_seconds=round(time.monotonic() - start_time, 3),
+        exit_code=exit_code,
+    )
+    trace_recorder.finalize()
     _write_text(exit_path, f"{exit_code}\n")
     return exit_code
 
@@ -703,6 +804,19 @@ def _run_mtime_polling_observer(
     last_signature = _poll_signature(repo_root, tracked_files)
     permission_denials_total = 0
     last_checkpoint_permission_denials_total = 0
+    trace_recorder = AgentTurnTraceRecorder(
+        run_id=run_id,
+        task_slug=task_slug,
+        arm_slug=arm_slug,
+        phase=phase,
+        provider="claude",
+        runner="claude-cli",
+        trace_source=TRACE_SOURCE_CLAUDE_MTIME_POLLING,
+        trace_fidelity=TRACE_FIDELITY_CHECKPOINT_ONLY,
+        repo_root=repo_root,
+        jsonl_path=run_dir / "agent_turn_trace.jsonl",
+        summary_path=run_dir / "agent_turn_trace_summary.json",
+    )
 
     while proc.poll() is None:
         time.sleep(1.0)
@@ -710,8 +824,15 @@ def _run_mtime_polling_observer(
         if current_signature == last_signature:
             continue
         checkpoint_index += 1
-        permission_denials_total = permission_denials_total
-        _checkpoint_current_turn(
+        wall_seconds = round(time.monotonic() - start_time, 3)
+        trace_recorder.record_file_change_observed(
+            turn_index=checkpoint_index,
+            provider_event_type="mtime_polling",
+            checkpoint_index=checkpoint_index,
+            wall_seconds=wall_seconds,
+            notes=["mtime polling detected a tracked file change"],
+        )
+        record = _checkpoint_current_turn(
             repo_root=repo_root,
             run_dir=run_dir,
             run_id=run_id,
@@ -726,6 +847,26 @@ def _run_mtime_polling_observer(
             start_time=start_time,
             permission_denials_delta=max(permission_denials_total - last_checkpoint_permission_denials_total, 0),
         )
+        trace_recorder.record_checkpoint(
+            checkpoint_index=checkpoint_index,
+            turn_index=checkpoint_index,
+            provider_event_type="mtime_polling",
+            assistant_message_id=None,
+            wall_seconds=record["wall_seconds"],
+            verify_exit=record["verify_exit"],
+            hidden_evaluator_exit=record["hidden_evaluator_exit"],
+            functional_green=record["functional_green"],
+            bench_ready_green=record["bench_ready_green"],
+            permission_denials_delta=record["permission_denials_delta"],
+            checkpoint_eval_errors=record["checkpoint_eval_errors"],
+            notes=["mtime polling checkpoint"],
+        )
+        trace_recorder.record_turn_completed(
+            turn_index=checkpoint_index,
+            provider_event_type="mtime_polling",
+            wall_seconds=record["wall_seconds"],
+            notes=["mtime polling checkpoint"],
+        )
         last_checkpoint_permission_denials_total = permission_denials_total
         last_signature = current_signature
 
@@ -733,6 +874,12 @@ def _run_mtime_polling_observer(
     stderr_thread.join(timeout=5)
     proc.wait()
     exit_code = proc.returncode or 0
+    trace_recorder.record_run_result(
+        provider_event_type="result",
+        wall_seconds=round(time.monotonic() - start_time, 3),
+        exit_code=exit_code,
+    )
+    trace_recorder.finalize()
     _write_text(exit_path, f"{exit_code}\n")
     return exit_code
 

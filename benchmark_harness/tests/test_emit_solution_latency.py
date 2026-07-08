@@ -61,6 +61,40 @@ def test_write_summary_persists_json(tmp_path: Path):
     assert data["first_bench_ready_green_turn"] is None
 
 
+def test_build_summary_uses_agent_turn_trace_summary(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    write(run_dir / "run_metrics.json", json.dumps({"actual_turns": 12}) + "\n")
+    write(
+        run_dir / "agent_turn_trace_summary.json",
+        json.dumps(
+            {
+                "actual_turns": 12,
+                "first_functional_green_turn": 5,
+                "first_bench_ready_green_turn": 8,
+                "turns_after_first_functional_green": 7,
+                "turns_after_first_bench_ready_green": 4,
+                "permission_denials_after_first_green": 2,
+                "checkpoint_count": 3,
+                "checkpoint_eval_errors": [],
+                "solution_latency_observable": True,
+                "solution_latency_source": "codex_jsonl",
+                "solution_latency_note": "observed_from_per_turn_trace",
+                "trace_source": "codex_jsonl",
+                "trace_fidelity": "turn_event",
+            }
+        )
+        + "\n",
+    )
+
+    summary = build_summary(run_dir, phase="initial", verify_exit=0, hidden_exit=0)
+
+    assert summary["solution_latency_observable"] is True
+    assert summary["source"] == "codex_jsonl"
+    assert summary["note"] == "observed_from_per_turn_trace"
+    assert summary["first_functional_green_turn"] == 5
+    assert summary["first_bench_ready_green_turn"] == 8
+
+
 def test_annotate_run_writes_collected_phase_summaries(tmp_path: Path):
     root = tmp_path
     run_id = "t3_haiku_A_pr12_r1"

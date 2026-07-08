@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Iterable
 
+from benchmark_harness.agent_turn_trace import TRACE_SUMMARY_FILENAME, read_trace_summary
 from benchmark_harness.semantic_terminal_state import classify_semantic_terminal_state
 from benchmark_harness.solution_latency import summarize_solution_latency
 from benchmark_harness.validate_skill_runtime_proof import validate as validate_skill_runtime_proof
@@ -48,6 +49,17 @@ SOLUTION_LATENCY_FIELDS = [
     "solution_latency_observable",
     "solution_latency_source",
     "solution_latency_note",
+]
+
+TRACE_SUMMARY_FIELDS = [
+    "turn_trace_present",
+    "turn_trace_fidelity",
+    "turns_observed",
+    "file_changing_tool_uses_observed",
+    "checkpoints_observed",
+    "first_functional_green_turn",
+    "first_bench_ready_green_turn",
+    "skill_trace_evidence_level",
 ]
 
 FINALIZER_FIELDS = [
@@ -96,6 +108,14 @@ ROW_FIELDS = [
     "initial_solution_latency_observable",
     "initial_solution_latency_source",
     "initial_solution_latency_note",
+    "initial_turn_trace_present",
+    "initial_turn_trace_fidelity",
+    "initial_turns_observed",
+    "initial_file_changing_tool_uses_observed",
+    "initial_checkpoints_observed",
+    "initial_first_functional_green_turn",
+    "initial_first_bench_ready_green_turn",
+    "initial_skill_trace_evidence_level",
     "initial_finalizer_enabled",
     "initial_finalizer_ran",
     "initial_finalizer_valid",
@@ -148,6 +168,14 @@ ROW_FIELDS = [
     "full_resume_solution_latency_observable",
     "full_resume_solution_latency_source",
     "full_resume_solution_latency_note",
+    "full_turn_trace_present",
+    "full_turn_trace_fidelity",
+    "full_turns_observed",
+    "full_file_changing_tool_uses_observed",
+    "full_checkpoints_observed",
+    "full_first_functional_green_turn",
+    "full_first_bench_ready_green_turn",
+    "full_skill_trace_evidence_level",
     "full_resume_finalizer_enabled",
     "full_resume_finalizer_ran",
     "full_resume_finalizer_valid",
@@ -176,6 +204,14 @@ ROW_FIELDS = [
     "stripped_resume_solution_latency_observable",
     "stripped_resume_solution_latency_source",
     "stripped_resume_solution_latency_note",
+    "stripped_turn_trace_present",
+    "stripped_turn_trace_fidelity",
+    "stripped_turns_observed",
+    "stripped_file_changing_tool_uses_observed",
+    "stripped_checkpoints_observed",
+    "stripped_first_functional_green_turn",
+    "stripped_first_bench_ready_green_turn",
+    "stripped_skill_trace_evidence_level",
     "stripped_resume_finalizer_enabled",
     "stripped_resume_finalizer_ran",
     "stripped_resume_finalizer_valid",
@@ -635,6 +671,25 @@ def _prefixed_latency(prefix: str, latency: dict[str, object]) -> dict[str, obje
     return {f"{prefix}_{field}": latency.get(field) for field in SOLUTION_LATENCY_FIELDS}
 
 
+def _trace_summary(run_dir: Path) -> dict[str, object]:
+    summary = read_trace_summary(run_dir / TRACE_SUMMARY_FILENAME) or {}
+    return {
+        "turn_trace_present": bool(summary),
+        "turn_trace_fidelity": summary.get("trace_fidelity"),
+        "turns_observed": summary.get("turns_observed"),
+        "file_changing_tool_uses_observed": summary.get("file_changing_tool_uses_observed"),
+        "checkpoints_observed": summary.get("checkpoints_observed"),
+        "first_functional_green_turn": summary.get("first_functional_green_turn"),
+        "first_bench_ready_green_turn": summary.get("first_bench_ready_green_turn"),
+        "skill_trace_evidence_level": summary.get("skill_trace_evidence_level"),
+    }
+
+
+def _prefixed_trace_summary(prefix: str, run_dir: Path) -> dict[str, object]:
+    trace_summary = _trace_summary(run_dir)
+    return {f"{prefix}_{field}": trace_summary.get(field) for field in TRACE_SUMMARY_FIELDS}
+
+
 FINALIZER_FIELD_MAP = {
     "enabled": "enabled",
     "ran": "ran",
@@ -843,6 +898,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 diff_bytes=initial_diff_bytes,
             ),
             **_prefixed_latency("initial", initial_latency),
+            **_prefixed_trace_summary("initial", initial_run),
             **_prefixed_finalizer("initial", initial_finalizer),
             "failure_stage": None if initial_ready else "initial",
             "failure_reason": (
@@ -884,6 +940,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 is_run=full_resume_run_present,
             ),
             **_prefixed_latency("full_resume", full_resume_latency),
+            **_prefixed_trace_summary("full", full_resume_run),
             **_prefixed_finalizer("full_resume", full_resume_finalizer),
             "stripped_resume_verify_exit": stripped_resume_verify_exit,
             "stripped_resume_hidden_exit": stripped_resume_hidden_exit,
@@ -897,6 +954,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
                 is_run=stripped_resume_run_present,
             ),
             **_prefixed_latency("stripped_resume", stripped_resume_latency),
+            **_prefixed_trace_summary("stripped", stripped_resume_run),
             **_prefixed_finalizer("stripped_resume", stripped_resume_finalizer),
             "full_added_regression_test": _detect_added_regression_test(full_resume_run / "diff.patch"),
             "stripped_added_regression_test": _detect_added_regression_test(stripped_resume_run / "diff.patch"),

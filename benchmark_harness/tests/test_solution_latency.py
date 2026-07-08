@@ -73,6 +73,44 @@ def test_solution_latency_reads_explicit_summary(tmp_path: Path):
     assert result["solution_latency_note"] == "computed_by_harness"
 
 
+def test_solution_latency_reads_agent_turn_trace_summary(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    write(run_dir / "run_metrics.json", json.dumps({"actual_turns": 12}) + "\n")
+    write(
+        run_dir / "agent_turn_trace_summary.json",
+        json.dumps(
+            {
+                "actual_turns": 12,
+                "first_functional_green_turn": 5,
+                "first_bench_ready_green_turn": 8,
+                "turns_after_first_functional_green": 7,
+                "turns_after_first_bench_ready_green": 4,
+                "permission_denials_after_first_green": 2,
+                "checkpoint_count": 3,
+                "checkpoint_eval_errors": [],
+                "solution_latency_observable": True,
+                "solution_latency_source": "codex_jsonl",
+                "solution_latency_note": "observed_from_per_turn_trace",
+                "trace_source": "codex_jsonl",
+                "trace_fidelity": "turn_event",
+            }
+        )
+        + "\n",
+    )
+
+    result = summarize_solution_latency(run_dir, verify_exit=0, hidden_exit=0)
+
+    assert result["solution_latency_observable"] is True
+    assert result["actual_turns"] == 12
+    assert result["first_green_turn"] == 5
+    assert result["first_functional_green_turn"] == 5
+    assert result["first_bench_ready_green_turn"] == 8
+    assert result["turns_after_first_functional_green"] == 7
+    assert result["turns_after_first_bench_ready_green"] == 4
+    assert result["solution_latency_source"] == "codex_jsonl"
+    assert result["solution_latency_note"] == "observed_from_per_turn_trace"
+
+
 def test_solution_latency_reads_emitted_final_only_summary(tmp_path: Path):
     run_dir = tmp_path / "run"
     write(run_dir / "run_metrics.json", json.dumps({"actual_turns": 21}) + "\n")

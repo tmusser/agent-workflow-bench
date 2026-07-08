@@ -66,6 +66,20 @@ Future scorecard columns may separate `skill_available`, `artifact_inferred`,
 `agent_declared_trace`, and `runtime_hook_trace` so rows are less likely to be read
 as if artifact evidence were invocation proof.
 
+Current rows also surface normalized turn-trace metadata when
+`agent_turn_trace_summary.json` is present:
+
+- `initial_turn_trace_present`
+- `initial_turn_trace_fidelity`
+- `initial_turns_observed`
+- `initial_file_changing_tool_uses_observed`
+- `initial_checkpoints_observed`
+- `initial_first_functional_green_turn`
+- `initial_first_bench_ready_green_turn`
+- `initial_skill_trace_evidence_level`
+
+Equivalent `full_...` and `stripped_...` fields are emitted for the resume phases.
+
 ## Caution
 
 A green row does not by itself prove broad skill superiority. It only says the run satisfied this bundle's checks and resume conditions.

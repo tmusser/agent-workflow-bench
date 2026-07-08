@@ -50,6 +50,7 @@ Optional fields:
 - `details`
 - `run_id`
 - `phase`
+- `turn_index`
 
 Example:
 
@@ -70,6 +71,8 @@ Malformed rows, blank lines, and unknown `event_type` values are counted as inva
 - which skills were considered;
 - which skills the agent says it invoked; and
 - which skills it explicitly skipped.
+
+If a row includes `turn_index`, the benchmark may associate that declared skill event with the matching turn in downstream summaries. That still does not make it runtime-hook evidence.
 
 That still does not make it a runtime-hook trace. The file is written by the agent or
 wrapper layer, so it is self-declared evidence. Use it as a stronger routing signal than

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import json
 import textwrap
 from pathlib import Path
 
@@ -164,3 +166,114 @@ def test_observer_error_does_not_relaunch_claude(tmp_path: Path, monkeypatch: py
     assert (run_dir / "claude_stdout.txt").read_text(encoding="utf-8") == "preserve stdout\n"
     assert (run_dir / "claude_stderr.txt").read_text(encoding="utf-8") == "preserve stderr\n"
     assert (run_dir / "claude_exit_code.txt").read_text(encoding="utf-8") == "7\n"
+
+
+def test_stream_json_observer_writes_normalized_trace_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    repo_root = tmp_path / "repo"
+    run_dir = tmp_path / "run"
+    repo_root.mkdir()
+    run_dir.mkdir()
+    _write(repo_root / "VERIFY.md", "Run VERIFY.sh and record the result.\n")
+
+    stdout_lines = [
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-1",
+                    "content": [
+                        {"type": "tool_use", "id": "toolu-1", "name": "Edit"},
+                    ],
+                },
+            }
+        )
+        + "\n",
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "toolu-1"},
+                    ]
+                },
+            }
+        )
+        + "\n",
+        json.dumps({"type": "result", "num_turns": 1}) + "\n",
+    ]
+
+    class FakeProc:
+        def __init__(self) -> None:
+            self.stdout = io.StringIO("".join(stdout_lines))
+            self.stderr = io.StringIO("observer stderr\n")
+            self.returncode = 0
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*_: object, **__: object) -> FakeProc:
+        return FakeProc()
+
+    def fake_checkpoint_current_turn(**_: object) -> dict[str, object]:
+        return {
+            "run_id": "run-1",
+            "task_slug": "03-refund-grain",
+            "arm_slug": "A-baseline",
+            "phase": "initial",
+            "source": "stream_json",
+            "checkpoint_index": 1,
+            "turn": 1,
+            "assistant_message_id": "msg-1",
+            "wall_seconds": 4.0,
+            "verify_exit": 0,
+            "hidden_evaluator_exit": 0,
+            "functional_green": True,
+            "bench_ready_green": True,
+            "permission_denials_delta": 0,
+            "checkpoint_eval_errors": [],
+        }
+
+    monkeypatch.setattr(solution_latency_observer.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(solution_latency_observer, "_checkpoint_current_turn", fake_checkpoint_current_turn)
+
+    exit_code = solution_latency_observer._run_stream_json_observer(
+        repo_root=repo_root,
+        run_dir=run_dir,
+        run_id="run-1",
+        task_slug="03-refund-grain",
+        arm_slug="A-baseline",
+        phase="initial",
+        prompt_text="prompt\n",
+        claude_cmd="claude",
+        model="sonnet",
+        effort="low",
+        max_turns=20,
+        permission_mode="acceptEdits",
+        plugin_dir=None,
+        hidden_evaluator_module="benchmark_harness.evaluators.task3_hidden_evaluator",
+    )
+
+    rows = [json.loads(line) for line in (run_dir / "agent_turn_trace.jsonl").read_text(encoding="utf-8").splitlines()]
+    summary = json.loads((run_dir / "agent_turn_trace_summary.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert [row["event_kind"] for row in rows] == [
+        "turn_started",
+        "assistant_message",
+        "tool_use",
+        "file_change_observed",
+        "tool_result",
+        "turn_completed",
+        "checkpoint",
+        "run_result",
+    ]
+    assert rows[2]["tool_name"] == "Edit"
+    assert rows[2]["file_changing_tool"] is True
+    assert summary["trace_source"] == "claude_stream_json"
+    assert summary["trace_fidelity"] == "turn_event"
+    assert summary["turns_observed"] == 1
+    assert summary["assistant_messages_observed"] == 1
+    assert summary["tool_uses_observed"] == 1
+    assert summary["file_changing_tool_uses_observed"] == 1
+    assert summary["checkpoints_observed"] == 1
+    assert summary["solution_latency_observable"] is True

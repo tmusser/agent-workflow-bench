@@ -19,6 +19,12 @@ def test_task1_defaults_are_cataloged():
     assert defaults["EXPECTED_STARTER_VERIFY_FAILURE_DEFAULT"] == "true"
 
 
+def test_codex_arm_defaults_to_codex_wrapper():
+    defaults = resolve_defaults("01-support-sla-boundary", "C-codex")
+
+    assert defaults["ARM_WRAPPER_DEFAULT"] == "arms/C-codex.md"
+
+
 def test_task4_defaults_keep_existing_wrapper():
     defaults = resolve_defaults("04-impossible-churn", "E-ai-engineering-skills")
 
@@ -169,6 +175,14 @@ def test_pilot_smoke_entrypoint_resolves_python_before_legacy_helper():
     assert "run_metrics.json" in legacy
     assert 'if [[ "$ARM_SLUG" == E-* ]]; then' in legacy
     assert 'Non-baseline arm did not produce SKILL_RUNTIME_PROOF.md.' not in legacy
+
+
+def test_codex_smoke_preflight_forwards_resolved_run_environment():
+    root = Path(__file__).resolve().parents[2]
+    codex_runner = (root / "tools" / "pilot_codex_smoke.sh").read_text(encoding="utf-8")
+
+    assert codex_runner.count("run_preflight_setup() {") == 1
+    assert 'TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" ./tools/pilot_smoke.sh setup' in codex_runner
 
 
 def test_task7_fresh_session_prompt_is_task_specific():

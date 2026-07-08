@@ -41,6 +41,7 @@ edit. The benchmark rewards bounded, verified, resumable work, not artifact
 volume.
 
 Create `SKILL_TRACE.jsonl` when using or skipping workflow skills. Keep it tiny: 2-5 JSONL rows is enough. Each line must be one JSON object with `event_type` and `skill_name`.
+Add `turn_index` when a declared skill event naturally maps to a specific turn.
 
 Allowed `event_type` values:
 - `skill_available`

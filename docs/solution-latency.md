@@ -11,6 +11,21 @@ the Claude print-mode helper can observe the run via `stream-json`; otherwise
 it falls back to a conservative `mtime_polling` trace. Older bundles may still
 have only final-state evidence, and those remain unobservable.
 
+The normalized trace artifacts are:
+
+- `agent_turn_trace.jsonl`
+- `agent_turn_trace_summary.json`
+
+Those files are provider-neutral, metadata-only, and safe to bundle. They do not
+contain prompt bodies, stdout/stderr bodies, source contents, or full provider
+event payloads.
+
+Trace fidelity levels are:
+
+- `turn_event`: the provider stream exposed assistant/tool events.
+- `checkpoint_only`: the harness observed file changes and checkpoint snapshots, but not exact turn boundaries.
+- `run_level_only`: only final provider result metadata was available.
+
 `mtime_polling` is best-effort. It only sees tracked-file timestamp changes, so
 short runs or edits that touch only untracked files can be missed. When that
 happens, keep `solution_latency_observable` false and do not infer first-green
@@ -128,6 +143,20 @@ This is intentional. It preserves the difference between:
 
 The scorecard can compute first-green turn when a run directory includes one of
 these optional files.
+
+### `agent_turn_trace_summary.json`
+
+This is the preferred normalized trace artifact. It can provide:
+
+- `trace_fidelity`
+- `turns_observed`
+- `file_changing_tool_uses_observed`
+- `checkpoints_observed`
+- `first_functional_green_turn`
+- `first_bench_ready_green_turn`
+- `solution_latency_observable`
+- `solution_latency_source`
+- `solution_latency_note`
 
 ### `solution_latency.json`
 

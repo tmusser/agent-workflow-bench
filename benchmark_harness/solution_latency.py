@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from benchmark_harness.agent_turn_trace import TRACE_SUMMARY_FILENAME
+
 LATENCY_NOT_OBSERVABLE = "not_observable"
 LATENCY_PHASE_NOT_RUN = "phase_not_run"
 LATENCY_FINAL_ONLY = "final_only_no_per_turn_trace"
@@ -297,7 +299,25 @@ def _explicit_solution_latency(
     verify_exit: object,
     hidden_exit: object,
 ) -> dict[str, Any] | None:
-    data = _read_json(run_dir / "solution_latency.json")
+    for filename in ("solution_latency.json", TRACE_SUMMARY_FILENAME):
+        data = _read_json(run_dir / filename)
+        if data:
+            return _explicit_solution_latency_from_data(
+                data,
+                actual_turns,
+                verify_exit=verify_exit,
+                hidden_exit=hidden_exit,
+            )
+    return None
+
+
+def _explicit_solution_latency_from_data(
+    data: dict[str, Any],
+    actual_turns: int | None,
+    *,
+    verify_exit: object,
+    hidden_exit: object,
+) -> dict[str, Any] | None:
     if not data:
         return None
 

@@ -36,9 +36,9 @@ def test_valid_skill_trace_summarizes_declared_events(tmp_path: Path):
         repo / "SKILL_TRACE.jsonl",
         "\n".join(
             [
-                json.dumps({"event_type": "skill_available", "skill_name": "mini-spec"}),
-                json.dumps({"event_type": "skill_considered", "skill_name": "verify-contract"}),
-                json.dumps({"event_type": "skill_invoked", "skill_name": "verify-contract"}),
+        json.dumps({"event_type": "skill_available", "skill_name": "mini-spec"}),
+                json.dumps({"event_type": "skill_considered", "skill_name": "verify-contract", "turn_index": 2}),
+                json.dumps({"event_type": "skill_invoked", "skill_name": "verify-contract", "turn_index": 4}),
                 json.dumps({"event_type": "skill_skipped", "skill_name": "handoff"}),
             ]
         )
@@ -58,6 +58,7 @@ def test_valid_skill_trace_summarizes_declared_events(tmp_path: Path):
     assert summary.declared_invoked_skills == ["verify-contract"]
     assert summary.declared_skipped_skills == ["handoff"]
     assert summary.summary["valid_rows"] == 4
+    assert summary.summary["declared_turn_indices"] == [2, 4]
 
 
 def test_malformed_jsonl_row_is_reported(tmp_path: Path):

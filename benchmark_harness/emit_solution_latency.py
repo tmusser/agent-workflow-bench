@@ -78,7 +78,15 @@ def build_summary(run_dir: Path, *, phase: str, verify_exit: int, hidden_exit: i
         run_id = run_dir.name
     task_slug = metrics.get("task_slug")
     arm_slug = metrics.get("arm_slug")
-    has_turn_trace = any((run_dir / name).exists() for name in ("turn_events.jsonl", "solution_timeline.jsonl"))
+    has_turn_trace = any(
+        (run_dir / name).exists()
+        for name in (
+            "turn_events.jsonl",
+            "solution_timeline.jsonl",
+            "agent_turn_trace.jsonl",
+            "agent_turn_trace_summary.json",
+        )
+    )
     source = inferred.get("source") or inferred.get("solution_latency_source") or FINAL_ONLY_NOTE
     note = inferred.get("note") or inferred.get("solution_latency_note") or FINAL_ONLY_NOTE
     if not has_turn_trace and source == FINAL_ONLY_NOTE and note == "not_observable":

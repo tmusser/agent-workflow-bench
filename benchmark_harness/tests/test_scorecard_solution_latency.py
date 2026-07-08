@@ -57,6 +57,24 @@ def base_files(run_id: str) -> dict[str, str]:
             indent=2,
         )
         + "\n",
+        f"benchmark-data/runs/{run_id}/agent_turn_trace_summary.json": json.dumps(
+            {
+                "trace_source": "claude_stream_json",
+                "trace_fidelity": "turn_event",
+                "turns_observed": 6,
+                "assistant_messages_observed": 6,
+                "tool_uses_observed": 14,
+                "file_changing_tool_uses_observed": 4,
+                "checkpoints_observed": 3,
+                "first_functional_green_turn": 7,
+                "first_bench_ready_green_turn": 9,
+                "skill_trace_present": True,
+                "skill_trace_evidence_level": "agent_declared",
+                "raw_content_omitted": True,
+            },
+            indent=2,
+        )
+        + "\n",
         f"benchmark-data/runs/{run_id}/diff.patch": (
             "diff --git a/src/example.py b/src/example.py\n"
             "--- a/src/example.py\n"
@@ -88,10 +106,20 @@ def test_scorecard_includes_solution_latency_fields(tmp_path: Path):
     assert row["initial_first_functional_green_wall_seconds"] == 7.5
     assert row["initial_first_bench_ready_green_turn"] == 9
     assert row["initial_first_bench_ready_green_wall_seconds"] == 9.5
+    assert row["initial_turn_trace_present"] is True
+    assert row["initial_turn_trace_fidelity"] == "turn_event"
+    assert row["initial_turns_observed"] == 6
+    assert row["initial_file_changing_tool_uses_observed"] == 4
+    assert row["initial_checkpoints_observed"] == 3
+    assert row["initial_first_functional_green_turn"] == 7
+    assert row["initial_first_bench_ready_green_turn"] == 9
+    assert row["initial_skill_trace_evidence_level"] == "agent_declared"
     assert row["initial_turns_after_first_green"] == 14
     assert row["initial_turns_after_first_functional_green"] == 14
     assert row["initial_turns_after_first_bench_ready_green"] == 12
     assert row["initial_permission_denials_after_first_green"] == 3
     assert row["initial_solution_latency_source"] == "stream_json"
+    assert row["full_turn_trace_present"] is False
+    assert row["stripped_turn_trace_present"] is False
     assert row["full_resume_solution_latency_note"] == "phase_not_run"
     assert row["stripped_resume_solution_latency_note"] == "phase_not_run"
