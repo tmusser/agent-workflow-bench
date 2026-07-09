@@ -10,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from benchmark_harness.skill_runtime_recovery import arm_requires_skill_runtime
 from benchmark_harness.summarize_run_effort import load_run_metrics
 from benchmark_harness.task_catalog import TASKS, resolve_defaults
 
@@ -22,8 +23,12 @@ BLOCKED_PUBLIC_PREFIX = "blocked:"
 BLOCKED_CLASSIFICATIONS = {
     "agent_stopped_before_attempt",
     "environment_blocked_before_attempt",
-    "skill_context_failure",
     "usage_limit_blocked_before_attempt",
+}
+FAILED_CLASSIFICATIONS = {
+    "artifact_contract_failure",
+    "functional_failure",
+    "missing_skill_runtime_proof",
 }
 
 DEFAULT_OUTPUT_CSV = Path("benchmark-data/codex_matrix_metrics.csv")
@@ -154,6 +159,17 @@ def _safe_int(value: object) -> int | None:
         return int(str(value).strip())
     except (TypeError, ValueError):
         return None
+
+
+def _coerce_bool(value: object) -> bool | None:
+    if value is None or isinstance(value, bool):
+        return value
+    text = _normalize_text(value).lower()
+    if text in {"true", "1", "yes", "y"}:
+        return True
+    if text in {"false", "0", "no", "n"}:
+        return False
+    return None
 
 
 def _safe_float(value: object) -> float | None:
@@ -300,14 +316,45 @@ def _metrics_time_ns(path: Path) -> int:
         return 0
 
 
-def _status_from_recovery(run_dir: Path) -> str:
+def _status_from_recovery(run_dir: Path, *, arm_slug: str) -> str:
     recovery = _read_json(run_dir / "skill_runtime_recovery.json")
     if not recovery:
         return "completed"
     public_status = _normalize_text(recovery.get("public_status")).lower()
     classification = _normalize_text(recovery.get("classification")).lower()
-    if public_status.startswith(BLOCKED_PUBLIC_PREFIX) or classification in BLOCKED_CLASSIFICATIONS:
+    functional_green = _coerce_bool(recovery.get("functional_green"))
+    if functional_green is None:
+        verify_exit = _safe_int(recovery.get("verification_exit"))
+        hidden_exit = _safe_int(recovery.get("hidden_evaluator_exit"))
+        if verify_exit is not None and hidden_exit is not None:
+            functional_green = verify_exit == 0 and hidden_exit == 0
+
+    skill_runtime_required = arm_requires_skill_runtime(arm_slug)
+
+    if public_status.startswith(BLOCKED_PUBLIC_PREFIX):
+        if classification == "skill_context_failure" and not skill_runtime_required:
+            pass
+        else:
+            return "blocked"
+
+    if classification in BLOCKED_CLASSIFICATIONS:
         return "blocked"
+    # Older C-arm recovery files can mislabel real task outcomes as skill-context
+    # failures; use the functional evidence instead of preserving that stale block.
+    if classification == "skill_context_failure":
+        if skill_runtime_required:
+            return "blocked"
+        if functional_green is True:
+            return "completed"
+        if functional_green is False:
+            return "failed"
+        return "failed"
+    if classification in FAILED_CLASSIFICATIONS:
+        return "failed"
+    if functional_green is True:
+        return "completed"
+    if functional_green is False:
+        return "failed"
     return "completed"
 
 
@@ -408,6 +455,7 @@ def _normalize_selected_row(
         ),
     )
     run_dir = path.parent
+    status = _status_from_recovery(run_dir, arm_slug=arm_slug)
     selected = {
         "task_slug": task_slug,
         "arm_slug": arm_slug,
@@ -417,10 +465,10 @@ def _normalize_selected_row(
         "provider": provider or "",
         "runner": runner or "",
         "model_label": model_label,
-        "status": _status_from_recovery(run_dir),
+        "status": status,
         "found": True,
         "blocked": False,
-        "row_state": "completed",
+        "row_state": status,
         "actual_turns": actual_turns,
         "input_tokens": token_fields["input_tokens"],
         "cached_input_tokens": token_fields["cached_input_tokens"],
@@ -439,7 +487,6 @@ def _normalize_selected_row(
     }
     selected["billableish_tokens"] = _wall_billableish_tokens(selected)
     selected["blocked"] = selected["status"] == "blocked"
-    selected["row_state"] = "blocked" if selected["blocked"] else "completed"
     return selected
 
 
@@ -544,6 +591,7 @@ def summarize_matrix(
         "rows_found": 0,
         "rows_missing": 0,
         "valid_completed_rows": 0,
+        "failed_rows": 0,
         "blocked_rows": 0,
         "actual_turns": 0,
         "input_tokens": 0,
@@ -623,6 +671,8 @@ def summarize_matrix(
         totals["rows_found"] += 1
         if selected["blocked"]:
             totals["blocked_rows"] += 1
+        elif selected["status"] == "failed":
+            totals["failed_rows"] += 1
         else:
             totals["valid_completed_rows"] += 1
             for key_name in (
@@ -700,6 +750,7 @@ def render_markdown(rows: list[dict[str, Any]], summary: dict[str, Any], *, repo
         f"- Rows found: `{summary['rows_found']}`",
         f"- Rows missing: `{summary['rows_missing']}`",
         f"- Valid completed rows: `{summary['valid_completed_rows']}`",
+        f"- Failed rows: `{summary['failed_rows']}`",
         f"- Blocked rows: `{summary['blocked_rows']}`",
         f"- Actual turns: `{summary['actual_turns']}`",
         f"- Input tokens: `{summary['input_tokens']}`",

@@ -90,6 +90,7 @@ def make_run(
     run_id: str,
     *,
     phase: str = "initial",
+    arm_slug: str = "E-ai-engineering-skills",
     prompt_text: str | None = None,
     proof_text: str | None = None,
     context_text: str | None = None,
@@ -137,7 +138,7 @@ def make_run(
             {
                 "run_id": run_id,
                 "task_slug": task_slug,
-                "arm_slug": "E-ai-engineering-skills",
+                "arm_slug": arm_slug,
                 "runner_exit_code": codex_exit_code,
                 "agent_exit_code": codex_exit_code,
                 "output_format": "json",
@@ -245,6 +246,121 @@ def test_recovery_marks_missing_proof_after_attempt_as_artifact_contract_failure
     assert recovery["skill_runtime_context_present"] is True
     assert recovery["stop_after_initial"] is False
     assert recovery["functional_green"] is True
+
+
+def test_c_arm_ignores_missing_skill_runtime_artifacts_when_green(tmp_path: Path):
+    _, run_dir, workspace = make_run(
+        tmp_path,
+        "c1",
+        arm_slug="C-codex",
+        prompt_text="# baseline prompt\n",
+        proof_text=None,
+        context_text=None,
+        verification_text="3 passed in 0.34s\n",
+        hidden_text="Hidden Task 4 evaluator passed\n",
+        diff_text=(
+            "diff --git a/src/commerce/metrics.py b/src/commerce/metrics.py\n"
+            "--- a/src/commerce/metrics.py\n"
+            "+++ b/src/commerce/metrics.py\n"
+            "@@\n"
+            "-old\n"
+            "+new\n"
+        ),
+        task_slug="03-refund-grain",
+    )
+
+    recovery = skill_runtime_recovery.build_skill_runtime_recovery(
+        run_dir=run_dir,
+        workspace_root=workspace,
+        prompt_file=run_dir / "prompt.md",
+        run_id="c1",
+        task_slug="03-refund-grain",
+        arm_slug="C-codex",
+        phase="initial",
+        collect_exit_code=0,
+    )
+
+    assert recovery["classification"] == "completed_with_required_artifacts"
+    assert recovery["public_status"] == "passed"
+    assert recovery["failure_category"] is None
+    assert recovery["skill_runtime_context_present"] is False
+    assert recovery["skill_runtime_proof_present"] is False
+    assert recovery["functional_green"] is True
+    assert recovery["stop_after_initial"] is False
+
+
+def test_c_arm_marks_hidden_failure_as_functional_failure(tmp_path: Path):
+    _, run_dir, workspace = make_run(
+        tmp_path,
+        "c2",
+        arm_slug="C-codex",
+        prompt_text="# baseline prompt\n",
+        proof_text=None,
+        context_text=None,
+        verification_text="3 passed in 0.34s\n",
+        hidden_text="HIDDEN CONTRACT FAILED: impossible churn rows were found\n",
+        diff_text=(
+            "diff --git a/src/churncalc/metrics.py b/src/churncalc/metrics.py\n"
+            "--- a/src/churncalc/metrics.py\n"
+            "+++ b/src/churncalc/metrics.py\n"
+            "@@\n"
+            "-old\n"
+            "+new\n"
+        ),
+        task_slug="04-impossible-churn",
+        collect_exit_code=1,
+    )
+
+    recovery = skill_runtime_recovery.build_skill_runtime_recovery(
+        run_dir=run_dir,
+        workspace_root=workspace,
+        prompt_file=run_dir / "prompt.md",
+        run_id="c2",
+        task_slug="04-impossible-churn",
+        arm_slug="C-codex",
+        phase="initial",
+        collect_exit_code=1,
+    )
+
+    assert recovery["classification"] == "functional_failure"
+    assert recovery["public_status"] == "failed: functional"
+    assert recovery["failure_category"] == "functional_failure"
+    assert recovery["skill_runtime_context_present"] is False
+    assert recovery["skill_runtime_proof_present"] is False
+    assert recovery["functional_green"] is False
+    assert recovery["stop_after_initial"] is False
+
+
+def test_e_arm_missing_skill_runtime_context_remains_blocked(tmp_path: Path):
+    _, run_dir, workspace = make_run(
+        tmp_path,
+        "e1",
+        prompt_text="# baseline prompt\n",
+        proof_text=None,
+        context_text=None,
+        verification_text="3 passed in 0.34s\n",
+        hidden_text="Hidden Task 4 evaluator passed\n",
+        diff_text="",
+        collect_exit_code=1,
+    )
+
+    recovery = skill_runtime_recovery.build_skill_runtime_recovery(
+        run_dir=run_dir,
+        workspace_root=workspace,
+        prompt_file=run_dir / "prompt.md",
+        run_id="e1",
+        task_slug="04-impossible-churn",
+        arm_slug="E-ai-engineering-skills",
+        phase="initial",
+        collect_exit_code=1,
+    )
+
+    assert recovery["classification"] == "skill_context_failure"
+    assert recovery["public_status"] == "blocked: skill context before task attempt"
+    assert recovery["failure_category"] == "skill_context_failure"
+    assert recovery["skill_runtime_context_present"] is False
+    assert recovery["skill_runtime_proof_present"] is False
+    assert recovery["stop_after_initial"] is True
 
 
 def test_recovery_marks_usage_limit_blocked_before_attempt(tmp_path: Path):

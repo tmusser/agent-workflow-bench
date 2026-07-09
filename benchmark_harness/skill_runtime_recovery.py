@@ -83,6 +83,10 @@ SKILL_CONTEXT_MARKERS = [
 ]
 
 
+def arm_requires_skill_runtime(arm_slug: str) -> bool:
+    return arm_slug.startswith("E-")
+
+
 def _read_text(path: Path) -> str | None:
     if not path.exists() or not path.is_file():
         return None
@@ -290,6 +294,7 @@ def _build_failure_category(classification: str) -> str | None:
 
 def _classify_recovery(
     *,
+    skill_runtime_required: bool,
     proof_required: bool,
     prompt_explicit: bool,
     skill_context_present: bool,
@@ -307,7 +312,7 @@ def _classify_recovery(
         return "usage_limit_blocked_before_attempt"
     if not task_attempted and environment_blocked:
         return "environment_blocked_before_attempt"
-    if not skill_context_present or not skill_context_valid:
+    if skill_runtime_required and (not skill_context_present or not skill_context_valid):
         return "skill_context_failure"
     if not task_attempted and agent_stopped:
         return "agent_stopped_before_attempt"
@@ -433,8 +438,10 @@ def build_skill_runtime_recovery(
         or _file_size(diff_patch) > 0
     )
 
-    proof_required = arm_slug.startswith("E-")
+    skill_runtime_required = arm_requires_skill_runtime(arm_slug)
+    proof_required = skill_runtime_required
     classification = _classify_recovery(
+        skill_runtime_required=skill_runtime_required,
         proof_required=proof_required,
         prompt_explicit=prompt_explicit,
         skill_context_present=skill_context_present,

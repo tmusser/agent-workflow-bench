@@ -75,6 +75,42 @@ def _make_metrics(
     return data
 
 
+def _make_recovery(
+    *,
+    run_id: str,
+    task_slug: str,
+    arm_slug: str,
+    phase: str,
+    classification: str,
+    public_status: str,
+    functional_green: bool,
+    verification_exit: int,
+    hidden_evaluator_exit: int,
+    task_attempted: bool,
+    initial_not_ready_present: bool = False,
+    stop_after_initial: bool = False,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "run_id": run_id,
+        "task_slug": task_slug,
+        "arm_slug": arm_slug,
+        "phase": phase,
+        "classification": classification,
+        "public_status": public_status,
+        "functional_green": functional_green,
+        "verification_exit": verification_exit,
+        "hidden_evaluator_exit": hidden_evaluator_exit,
+        "task_attempted": task_attempted,
+        "initial_not_ready_present": initial_not_ready_present,
+        "stop_after_initial": stop_after_initial,
+        "skill_runtime_context_present": False,
+        "skill_runtime_context_valid": False,
+        "skill_runtime_proof_present": False,
+        "skill_runtime_proof_valid": False,
+    }
+
+
 def _run_metrics_path(repo_root: Path, run_dir: str) -> Path:
     return repo_root / "benchmark-data" / run_dir / "run_metrics.json"
 
@@ -132,6 +168,7 @@ def test_summary_reports_missing_c_rows_and_compares_arms_without_shared_model_l
     assert summary["rows_found"] == 2
     assert summary["rows_missing"] == 4
     assert summary["valid_completed_rows"] == 2
+    assert summary["failed_rows"] == 0
     assert summary["blocked_rows"] == 0
     assert summary["actual_turns"] == 5
     assert summary["input_tokens"] == 300
@@ -295,6 +332,173 @@ def test_summary_uses_matrix_summary_csv_expectations(tmp_path: Path):
     assert summary["scheduled_rows"] == 2
     assert summary["rows_found"] == 2
     assert all(row["status"] == "completed" for row in rows)
+
+
+def test_summary_reclassifies_stale_c_skill_context_failure_to_completed(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    run_dir = repo_root / "benchmark-data" / "runs" / "v03pilot_03-refund-grain_C_g54mini_r1"
+    _write_json(
+        run_dir / "run_metrics.json",
+        _make_metrics(
+            run_id="v03pilot_03-refund-grain_C_g54mini_r1",
+            task_slug="03-refund-grain",
+            arm_slug="C-codex",
+            phase="initial",
+            model_label="gpt-5.4-mini",
+            actual_turns=1,
+            input_tokens=100,
+            cached_input_tokens=20,
+            output_tokens=30,
+            reasoning_output_tokens=5,
+            wall_clock_seconds=1.25,
+            exit_code=0,
+        ),
+    )
+    _write_text(run_dir / "verification_final.txt", "3 passed in 0.34s\n")
+    _write_text(run_dir / "hidden_evaluator_final.txt", "Hidden Task 4 evaluator passed\n")
+    _write_json(
+        run_dir / "skill_runtime_recovery.json",
+        _make_recovery(
+            run_id="v03pilot_03-refund-grain_C_g54mini_r1",
+            task_slug="03-refund-grain",
+            arm_slug="C-codex",
+            phase="initial",
+            classification="skill_context_failure",
+            public_status="failed: skill context",
+            functional_green=True,
+            verification_exit=0,
+            hidden_evaluator_exit=0,
+            task_attempted=True,
+        ),
+    )
+
+    rows, summary = matrix_metrics.summarize_matrix(
+        repo_root=repo_root,
+        tasks=["03-refund-grain"],
+        arms=["C-codex"],
+        phases=["initial"],
+    )
+
+    assert summary["scheduled_rows"] == 1
+    assert summary["rows_found"] == 1
+    assert summary["rows_missing"] == 0
+    assert summary["valid_completed_rows"] == 1
+    assert summary["failed_rows"] == 0
+    assert summary["blocked_rows"] == 0
+    assert rows[0]["status"] == "completed"
+    assert rows[0]["row_state"] == "completed"
+
+
+def test_summary_marks_c_hidden_failure_as_failed_and_keeps_resume_rows_missing(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    run_dir = repo_root / "benchmark-data" / "runs" / "v04pilot_04-bugfix_C_g54mini_r1"
+    _write_json(
+        run_dir / "run_metrics.json",
+        _make_metrics(
+            run_id="v04pilot_04-bugfix_C_g54mini_r1",
+            task_slug="04-impossible-churn",
+            arm_slug="C-codex",
+            phase="initial",
+            model_label="gpt-5.4-mini",
+            actual_turns=1,
+            input_tokens=120,
+            cached_input_tokens=30,
+            output_tokens=40,
+            reasoning_output_tokens=8,
+            wall_clock_seconds=2.5,
+            exit_code=0,
+        ),
+    )
+    _write_text(run_dir / "verification_final.txt", "3 passed in 0.34s\n")
+    _write_text(run_dir / "hidden_evaluator_final.txt", "HIDDEN CONTRACT FAILED: impossible churn rows were found\n")
+    _write_text(run_dir / "INITIAL_NOT_READY.txt", "Initial run is not ready for resume testing.\n")
+    _write_json(
+        run_dir / "skill_runtime_recovery.json",
+        _make_recovery(
+            run_id="v04pilot_04-bugfix_C_g54mini_r1",
+            task_slug="04-impossible-churn",
+            arm_slug="C-codex",
+            phase="initial",
+            classification="skill_context_failure",
+            public_status="failed: skill context",
+            functional_green=False,
+            verification_exit=0,
+            hidden_evaluator_exit=1,
+            task_attempted=True,
+            initial_not_ready_present=True,
+            stop_after_initial=False,
+        ),
+    )
+
+    rows, summary = matrix_metrics.summarize_matrix(
+        repo_root=repo_root,
+        tasks=["04-impossible-churn"],
+        arms=["C-codex"],
+        phases=["initial", "full_resume", "stripped_resume"],
+    )
+
+    assert summary["scheduled_rows"] == 3
+    assert summary["rows_found"] == 1
+    assert summary["rows_missing"] == 2
+    assert summary["valid_completed_rows"] == 0
+    assert summary["failed_rows"] == 1
+    assert summary["blocked_rows"] == 0
+    assert rows[0]["status"] == "failed"
+    assert rows[0]["row_state"] == "failed"
+    missing_rows = [row for row in rows if row["status"] == "missing"]
+    assert [row["phase"] for row in missing_rows] == ["full_resume", "stripped_resume"]
+
+
+def test_summary_keeps_e_skill_context_failure_blocked(tmp_path: Path):
+    repo_root = tmp_path / "repo"
+    run_dir = repo_root / "benchmark-data" / "runs" / "v01pilot_01-sla-boundary_E_r1"
+    _write_json(
+        run_dir / "run_metrics.json",
+        _make_metrics(
+            run_id="v01pilot_01-sla-boundary_E_r1",
+            task_slug="01-support-sla-boundary",
+            arm_slug="E-ai-engineering-skills",
+            phase="initial",
+            model_label="gpt-5.4-mini",
+            actual_turns=1,
+            input_tokens=80,
+            output_tokens=20,
+            wall_clock_seconds=1.75,
+            exit_code=0,
+        ),
+    )
+    _write_json(
+        run_dir / "skill_runtime_recovery.json",
+        _make_recovery(
+            run_id="v01pilot_01-sla-boundary_E_r1",
+            task_slug="01-support-sla-boundary",
+            arm_slug="E-ai-engineering-skills",
+            phase="initial",
+            classification="skill_context_failure",
+            public_status="blocked: skill context before task attempt",
+            functional_green=False,
+            verification_exit=0,
+            hidden_evaluator_exit=0,
+            task_attempted=False,
+            stop_after_initial=True,
+        ),
+    )
+
+    rows, summary = matrix_metrics.summarize_matrix(
+        repo_root=repo_root,
+        tasks=["01-support-sla-boundary"],
+        arms=["E-ai-engineering-skills"],
+        phases=["initial"],
+    )
+
+    assert summary["scheduled_rows"] == 1
+    assert summary["rows_found"] == 1
+    assert summary["rows_missing"] == 0
+    assert summary["valid_completed_rows"] == 0
+    assert summary["failed_rows"] == 0
+    assert summary["blocked_rows"] == 1
+    assert rows[0]["status"] == "blocked"
+    assert rows[0]["row_state"] == "blocked"
 
 
 def test_backfill_refuses_when_codex_evidence_is_absent(tmp_path: Path):

@@ -506,15 +506,15 @@ collect_initial() {
 
   echo
   echo "Codex recovery status: $(read_skill_runtime_recovery_field "$RUN_DIR" "public_status")"
-  if [[ "$stop_after_initial" == "true" ]]; then
-    echo "STOP: recovery classified the initial row as blocked."
-    echo "See: $RUN_DIR/skill_runtime_recovery.md"
+  if [[ "$stop_after_initial" == "true" || "$collect_exit_code" -ne 0 ]]; then
+    if [[ "$stop_after_initial" == "true" ]]; then
+      echo "STOP: recovery classified the initial row as blocked."
+      echo "See: $RUN_DIR/skill_runtime_recovery.md"
+    else
+      echo "STOP: initial run is not ready for resume testing."
+      echo "See: $RUN_DIR/INITIAL_NOT_READY.txt"
+    fi
     return 1
-  fi
-
-  if [[ "$collect_exit_code" -ne 0 ]]; then
-    echo "WARNING: collect-initial returned nonzero, but recovery did not classify the row as blocked."
-    echo "See: $RUN_DIR/skill_runtime_recovery.md"
   fi
   echo
   echo "Codex note: for this C-arm flow, ignore the shared Claude-oriented manual text above."

@@ -196,6 +196,7 @@ def test_codex_smoke_runner_wires_trace_and_resume_context():
     assert 'TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" SKILL_PLUGIN_DIR="$SKILL_PLUGIN_DIR" ./tools/pilot_smoke.sh collect-initial' in codex_runner
     assert 'TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" SKILL_PLUGIN_DIR="$SKILL_PLUGIN_DIR" ./tools/pilot_smoke.sh collect-full' in codex_runner
     assert 'TASK_SLUG="$TASK_SLUG" ARM_SLUG="$ARM_SLUG" RUN_ID="$RUN_ID" SKILL_PLUGIN_DIR="$SKILL_PLUGIN_DIR" ./tools/pilot_smoke.sh collect-stripped' in codex_runner
+    assert 'if [[ "$stop_after_initial" == "true" || "$collect_exit_code" -ne 0 ]]; then' in codex_runner
     assert 'write_skill_runtime_context_for_repo "$WORK" "$SKILL_PLUGIN_DIR"' in codex_runner
     assert 'local plugin_dir="${2:-${CLAUDE_PLUGIN_DIR:-${SKILL_PLUGIN_DIR:-}}}"' in legacy_runner
     assert 'write_skill_runtime_context_for_repo "$FULL_REPO" "$CLAUDE_PLUGIN_DIR"' in legacy_runner
