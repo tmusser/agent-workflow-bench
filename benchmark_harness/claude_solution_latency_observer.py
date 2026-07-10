@@ -310,9 +310,14 @@ def _finish_observation(
     summary = recorder.finalize()
 
     live_captures = [item for item in captures if item.trigger != "final_workspace"]
-    stable_snapshots = bool(captures) and all(item.process_group_paused for item in live_captures)
+    # A final-only snapshot can validate the terminal workspace, but it cannot
+    # establish which live turn first became green. Exact stream coverage needs
+    # at least one stable checkpoint captured while Claude was still running.
+    stable_snapshots = bool(live_captures) and all(
+        item.process_group_paused for item in live_captures
+    )
     coverage_complete = (
-        bool(captures)
+        bool(live_captures)
         and complete_boundary_stream
         and distinct_states_skipped == 0
         and stable_snapshots

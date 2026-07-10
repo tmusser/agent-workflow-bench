@@ -57,7 +57,7 @@ Exact first-green claims require `checkpoint_coverage_complete=true`.
 
 ### Stream-JSON mode
 
-Claude emits assistant messages and tool results. The hardened observer captures a distinct workspace state after a completed file-changing tool result, with an assistant-boundary fallback when necessary.
+Claude emits assistant messages and tool results. The hardened observer captures a distinct workspace state only after a completed file-changing tool result. Assistant boundaries are retained for turn accounting but are not used as snapshot fallbacks because the next turn may already be mutating the workspace when that event is consumed.
 
 Supported claim:
 

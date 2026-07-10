@@ -169,3 +169,55 @@ def test_polling_mode_never_claims_complete_boundary_coverage(tmp_path: Path):
     assert summary["solution_latency_observable"] is False
     assert summary["native_observation_unit"] == "sampled_workspace_state"
     assert summary["checkpoint_boundary_resolution"] == "sampled_workspace_change_then_process_group_pause"
+
+
+def test_final_only_snapshot_does_not_claim_exact_stream_coverage(tmp_path: Path):
+    repo = tmp_path / "repo"
+    run_dir = tmp_path / "run"
+    repo.mkdir()
+    _write(repo / "state.txt", "starter\n")
+    _write(
+        repo / "VERIFY.sh",
+        "#!/usr/bin/env bash\nset -euo pipefail\n[[ \"$(cat state.txt)\" == \"green\" ]]\n",
+        executable=True,
+    )
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("inspect only\n", encoding="utf-8")
+    fake_claude = tmp_path / "fake-claude-no-tools"
+    _write(
+        fake_claude,
+        f"""#!{sys.executable}
+from __future__ import annotations
+import json
+print(json.dumps({{"type": "assistant", "message": {{"id": "msg-1", "content": []}}}}), flush=True)
+print(json.dumps({{"type": "result", "num_turns": 1}}), flush=True)
+""",
+        executable=True,
+    )
+
+    exit_code = run(
+        repo_root=repo,
+        run_dir=run_dir,
+        run_id="claude-final-only",
+        task_slug="04-impossible-churn",
+        arm_slug="A-baseline",
+        phase="initial",
+        prompt_file=prompt,
+        claude_cmd=str(fake_claude),
+        model="sonnet",
+        effort="low",
+        max_turns=20,
+        permission_mode="acceptEdits",
+        plugin_dir=None,
+        hidden_evaluator_module="benchmark_harness.tests.fake_hidden_evaluator",
+        mode="stream_json",
+        max_checkpoints=8,
+    )
+
+    assert exit_code == 0
+    summary = json.loads((run_dir / "agent_turn_trace_summary.json").read_text(encoding="utf-8"))
+    assert summary["workspace_states_observed"] == 1
+    assert summary["checkpoint_coverage_complete"] is False
+    assert summary["stable_snapshot_coverage_complete"] is False
+    assert summary["solution_latency_observable"] is False
+    assert summary["first_functional_green_turn"] is None
