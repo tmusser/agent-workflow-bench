@@ -68,8 +68,36 @@ jobs:
 
       - name: Validate shell and diff hygiene
         run: |
-          bash -n tools/pilot_smoke.sh tools/pilot_smoke_legacy.sh tools/pilot_codex_smoke.sh
-          git diff --check
+          set +e
+          {
+            echo '== bash syntax =='
+            bash -n tools/pilot_smoke.sh tools/pilot_smoke_legacy.sh tools/pilot_codex_smoke.sh
+            shell_code=$?
+            echo "bash_exit=$shell_code"
+            echo '== git diff --check =='
+            git diff --check
+            diff_code=$?
+            echo "diff_exit=$diff_code"
+            exit $(( shell_code != 0 || diff_code != 0 ))
+          } > /tmp/hygiene.log 2>&1
+          code=$?
+          cat /tmp/hygiene.log
+          exit "$code"
+
+      - name: Report hygiene failure
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo 'Claude parity hygiene validation failed:'
+            echo
+            echo '```text'
+            cat /tmp/hygiene.log
+            echo '```'
+          } > /tmp/hygiene-comment.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/hygiene-comment.md
 
       - name: Verify release metadata
         run: |
