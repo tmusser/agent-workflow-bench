@@ -25,6 +25,9 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install test dependencies
+        run: python -m pip install -e '.[dev]'
+
       - name: Apply deterministic patch
         run: python .github/scripts/apply_codex_item_observability.py
 
