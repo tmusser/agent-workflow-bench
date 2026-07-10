@@ -158,6 +158,8 @@ def infer_exit_from_text(text: str, kind: str) -> int | None:
             "no hidden contract failed",
             "evaluator passed",
         )
+        if "no hidden contract failed" in lowered:
+            return 0
 
     if any(marker in lowered for marker in fail_markers):
         return 1
