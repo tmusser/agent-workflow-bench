@@ -98,3 +98,20 @@ When JSONL checkpoint observation is enabled, phase-prefixed scorecard columns i
 `first_functional_green_item`, `first_bench_ready_green_item`, both post-green item tails,
 `functional_to_bench_ready_items`, and checkpoint coverage. Only interpret an exact first
 green item when the corresponding `checkpoint_coverage_complete` field is true.
+
+## Provider observability fields
+
+v0.2.0 phase-prefixed rows expose the shared Claude/Codex snapshot contract:
+
+- `checkpoint_coverage_complete`
+- `stable_snapshot_coverage_complete`
+- `checkpoint_evaluation_deferred`
+- `checkpoint_boundary_resolution`
+- `native_observation_unit`
+- `workspace_states_observed` / `workspace_states_skipped`
+- `checkpoint_snapshot_pause_seconds`
+- `checkpoint_evaluator_seconds`
+
+Use provider-native first-green fields only when coverage is complete. Claude turns and
+Codex provider items are different units; compare outcomes, wall time, token use, and
+normalized tail fractions rather than raw unit counts.

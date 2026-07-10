@@ -3,7 +3,7 @@
 [![CI](https://github.com/tmusser/agent-workflow-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/tmusser/agent-workflow-bench/actions/workflows/ci.yml)
 [![Python >=3.11](https://img.shields.io/badge/python-%3E%3D3.11-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Version v0.1.0](https://img.shields.io/badge/version-v0.1.0-informational)](https://github.com/tmusser/agent-workflow-bench/releases/tag/v0.1.0)
+[![Version v0.2.0](https://img.shields.io/badge/version-v0.2.0-informational)](https://github.com/tmusser/agent-workflow-bench/releases/tag/v0.2.0)
 
 A small benchmark for agent skills, verification artifacts, and fresh-session resumability.
 
@@ -17,6 +17,11 @@ For a compact summary, see [docs/overview.md](docs/overview.md).
 For deterministic artifact hygiene checks, see [docs/artifact-usability.md](docs/artifact-usability.md).
 For inferred skill evidence summaries, see [docs/skill-routing-summary.md](docs/skill-routing-summary.md).
 For agent-declared trace evidence, see [docs/skill-trace.md](docs/skill-trace.md).
+For Claude/Codex harness parity and claim boundaries, see [docs/capabilities.md](docs/capabilities.md).
+
+### Provider-native observability
+
+The Claude and Codex harnesses now apply the same evidence contract: stable workspace snapshots, hidden evaluation deferred until the agent exits, phase-correct resume evaluators, explicit coverage completeness, and separate functional-green versus bench-ready-green tails. Claude reports at its native turn/tool-result resolution; Codex reports at provider-item resolution. These units are not treated as interchangeable.
 
 ## 1. What This Is
 
