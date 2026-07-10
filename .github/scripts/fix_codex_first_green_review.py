@@ -100,8 +100,6 @@ text = docs.read_text(encoding="utf-8")
 old = '''Snapshot evaluation happens after Codex exits so hidden checks do not steer the agent or
 consume its context. The runner briefly pauses the Codex process group only while copying
 a stable workspace snapshot and records that pause separately from evaluator time.
-
-Do not call all work after functional green "waste" automatically.
 '''
 new = '''Snapshot evaluation happens after Codex exits so hidden checks do not steer the agent or
 consume its context. The runner briefly pauses the Codex process group only while copying
@@ -112,22 +110,20 @@ is the strongest observation available from the current Codex stream, but it is 
 instruction-level timestamp: a very small event-to-pause scheduling race remains possible.
 Describe the result as the first evaluator-green captured provider item, and require
 `checkpoint_coverage_complete=true` before treating it as the first observed green state.
-
-Do not call all work after functional green "waste" automatically.
 '''
-if old not in text:
-    raise RuntimeError("docs boundary paragraph not found")
+if text.count(old) != 1:
+    raise RuntimeError("docs boundary paragraph not found exactly once")
 docs.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 # Extend the end-to-end assertions.
 test = Path("benchmark_harness/tests/test_codex_solution_latency_e2e.py")
 text = test.read_text(encoding="utf-8")
-text = text.replace(
-    '''    assert summary["checkpoint_coverage_complete"] is (os.name == "posix")
-''',
-    '''    assert summary["checkpoint_coverage_complete"] is (os.name == "posix")
+old_assert = '''    assert summary["checkpoint_coverage_complete"] is (os.name == "posix")
+'''
+new_assert = '''    assert summary["checkpoint_coverage_complete"] is (os.name == "posix")
     assert summary["item_solution_latency_observable"] is (os.name == "posix")
     assert summary["checkpoint_boundary_resolution"] == "provider_item_completed_then_process_group_pause"
-''',
-)
-test.write_text(text, encoding="utf-8")
+'''
+if text.count(old_assert) != 1:
+    raise RuntimeError("end-to-end assertion anchor not found exactly once")
+test.write_text(text.replace(old_assert, new_assert, 1), encoding="utf-8")
