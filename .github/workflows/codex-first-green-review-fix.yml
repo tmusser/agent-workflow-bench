@@ -1,9 +1,9 @@
 name: Codex first-green review fixes
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/codex-first-green-checkpoints
+      - main
 
 permissions:
   contents: write
@@ -15,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: feature/codex-first-green-checkpoints
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
