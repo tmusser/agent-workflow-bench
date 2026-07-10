@@ -264,13 +264,13 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 
 Benchmarked CLI model: `CODEX_MODEL=gpt-5.4-mini`
 
-Overall reading: this Codex-only pilot is useful evidence about workflow artifacts, verification discipline, and resumability under matched runner settings. It is not proof that skills broadly outperform no-skill Codex.
+Overall reading: in this single Codex-only pilot, C and E had the same observed functional pass pattern. E produced richer audit artifacts and sometimes broader defensive coverage, at materially higher token and wall-time cost. This does not prove native skill invocation caused the differences or that skills broadly outperform no-skill Codex.
 
 | Dimension | What the Codex C vs E pilot shows | What it does not show |
 | --- | --- | --- |
-| Functional correctness | Tasks 1-4 were functional green across C and E; Tasks 6-7 had public/hidden pass evidence with recovery caveats. | It does not establish broad coding-agent superiority. |
-| Hidden contracts | Task 5 failed hidden trust checks in both arms and was preserved as a real failure. | It does not imply either arm is generally robust to all hidden evaluators. |
-| Resume behavior | Tasks 1-4 passed full and stripped resume in both arms. Tasks 6-7 exposed recovery-classification gaps. | It does not show universal resumability. |
-| Audit trail quality | E produced proof/workflow artifacts on attempted E rows, and Tasks 1-4 E rebuilt stripped artifacts through the finalizer path. | Artifact presence alone did not make Tasks 5-7 bench-ready. |
-| Skill proof | E proof was valid on initial rows where produced; Tasks 1-4 stripped proof was rebuilt. | It does not prove skill runtime hooks guarantee correctness. |
-| Overall reading | Codex C vs E under this local pilot is suggestive evidence about audit and resumability behavior. | It is not proof that skills broadly outperform no-skill Codex. |
+| Functional correctness | Both arms passed Tasks 1-4, 6, and 7; both failed Task 5's complete hidden trust contract. | It does not establish a functional win-rate advantage for E. |
+| Hidden contracts | Task 5 remained a real failure, although E caught more trust blockers and used more cautious causal language. | A shared binary failure does not mean the two analyses were equally strong. |
+| Resume behavior | Tasks 1-4 passed full and stripped resume. Structured Task 6-7 evaluator output was previously misclassified by the generic recovery parser. | It does not show universal resumability or a resume advantage for E. |
+| Audit trail quality | E consistently produced richer proof and workflow artifacts. | Artifact presence alone does not establish correctness or native skill invocation. |
+| Efficiency | In the inspected Task 4-7 initial rows, E used roughly twice the tokens and wall time. | The sample is too small for a general cost estimate. |
+| Overall reading | The evidence supports an auditability-versus-efficiency tradeoff. | It is not proof that skills broadly outperform no-skill Codex. |

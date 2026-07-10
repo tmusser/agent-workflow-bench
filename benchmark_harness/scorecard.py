@@ -11,6 +11,7 @@ from typing import Iterable
 
 from benchmark_harness.agent_turn_trace import TRACE_SUMMARY_FILENAME, read_trace_summary
 from benchmark_harness.semantic_terminal_state import classify_semantic_terminal_state
+from benchmark_harness.evidence_status import infer_command_exit
 from benchmark_harness.solution_latency import summarize_solution_latency
 from benchmark_harness.validate_skill_runtime_proof import validate as validate_skill_runtime_proof
 
@@ -260,13 +261,21 @@ def _read_json(path: Path) -> dict[str, object] | None:
     return data if isinstance(data, dict) else None
 
 
-def _skill_runtime_proof_valid(proof_path: Path) -> bool:
+def _skill_runtime_proof_valid(
+    proof_path: Path,
+    *,
+    expected_agent_cli: str | None = None,
+) -> bool:
     if not proof_path.exists() or not proof_path.is_file():
         return False
     try:
-        return not validate_skill_runtime_proof(proof_path)
+        return not validate_skill_runtime_proof(
+            proof_path,
+            expected_agent_cli=expected_agent_cli,
+        )
     except OSError:
         return False
+
 
 
 def _safe_extract_tarball(bundle_path: Path, dest_dir: Path) -> None:
@@ -311,9 +320,25 @@ def _bundle_type_from_bundle_path(bundle_path: Path) -> str:
 def _arm_slug_from_run_id(run_id: str) -> str:
     if "_A_" in run_id:
         return "A-baseline"
+    if "_B_" in run_id:
+        return "B-strong-no-skill"
+    if "_C_" in run_id:
+        return "C-codex"
     if "_E_" in run_id:
         return "E-ai-engineering-skills"
     return "unknown"
+
+
+def _arm_slug_from_evidence(
+    run_id: str,
+    metrics: dict[str, object],
+    provenance: dict[str, object],
+) -> str:
+    for key in ("canonical_arm_slug", "resolved_arm_slug", "arm_slug", "requested_arm_slug"):
+        value = provenance.get(key) or metrics.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return _arm_slug_from_run_id(run_id)
 
 
 def _resume_candidate_paths(extracted_root: Path, run_id: str, stage: str, bundle_type: str) -> list[Path]:
@@ -330,6 +355,8 @@ def _resume_candidate_paths(extracted_root: Path, run_id: str, stage: str, bundl
         resume_root / "BUGFIX_REVIEW.md",
         resume_root / "HANDOFF.md",
         resume_root / "hidden_evaluator.txt",
+        resume_root / "codex_stdout.txt",
+        resume_root / "codex_stderr.txt",
         resume_root / "claude_stdout.txt",
         resume_root / "claude_stderr.txt",
     ]
@@ -435,20 +462,8 @@ def _infer_exit_from_output(text: str, kind: str) -> int | None:
 
 
 def _infer_command_exit(candidate_paths: Iterable[Path], kind: str) -> int | None:
-    texts: list[str] = []
-    for path in candidate_paths:
-        text = _read_text(path)
-        if text is None:
-            continue
-        explicit = _extract_explicit_exit(text, kind)
-        if explicit is not None:
-            return explicit
-        texts.append(text)
-    for text in texts:
-        inferred = _infer_exit_from_output(text, kind)
-        if inferred is not None:
-            return inferred
-    return None
+    return infer_command_exit(candidate_paths, kind)
+
 
 
 def _count_diff_files(diff_stat_path: Path, diff_patch_path: Path) -> int:
@@ -546,6 +561,8 @@ def _agent_side_verification_claim(extracted_root: Path, run_id: str, *, initial
         return "claimed_blocked"
 
     candidate_paths = [
+        extracted_root / "benchmark-data" / "runs" / run_id / "codex_stdout.txt",
+        extracted_root / "benchmark-data" / "runs" / run_id / "codex_stderr.txt",
         extracted_root / "benchmark-data" / "runs" / run_id / "claude_stdout.txt",
         extracted_root / "benchmark-data" / "runs" / run_id / "claude_stderr.txt",
         extracted_root / "benchmark-data" / "runs" / run_id / "verification_final.txt",
@@ -557,6 +574,8 @@ def _agent_side_verification_claim(extracted_root: Path, run_id: str, *, initial
         extracted_root / "benchmark-data" / "workspaces" / run_id / "repo" / "HANDOFF.md",
         extracted_root / "benchmark-data" / "workspaces" / run_id / "repo" / "BUGS.md",
         extracted_root / "benchmark-data" / "workspaces" / run_id / "repo" / "SKILL_RUNTIME_PROOF.md",
+        extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_full" / "codex_stdout.txt",
+        extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_full" / "codex_stderr.txt",
         extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_full" / "claude_stdout.txt",
         extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_full" / "claude_stderr.txt",
         extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_full" / "verification.txt",
@@ -565,6 +584,8 @@ def _agent_side_verification_claim(extracted_root: Path, run_id: str, *, initial
         extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_full" / "BUGFIX_REVIEW.md",
         extracted_root / "benchmark-data" / "resume-workspaces" / run_id / "full" / "repo" / "FRESH_SESSION_REVIEW.md",
         extracted_root / "benchmark-data" / "resume-workspaces" / run_id / "full" / "repo" / "BUGFIX_REVIEW.md",
+        extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_stripped" / "codex_stdout.txt",
+        extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_stripped" / "codex_stderr.txt",
         extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_stripped" / "claude_stdout.txt",
         extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_stripped" / "claude_stderr.txt",
         extracted_root / "benchmark-data" / "resume-runs" / f"{run_id}_stripped" / "verification.txt",
@@ -621,6 +642,8 @@ def _run_terminal_reason(run_dir: Path) -> str | None:
 
 def _stage_text(run_dir: Path) -> str:
     candidate_names = [
+        "codex_stdout.txt",
+        "codex_stderr.txt",
         "claude_stdout.txt",
         "claude_stderr.txt",
         "verification_final.txt",
@@ -834,7 +857,10 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
         )
         skill_runtime_proof_path = initial_repo / "SKILL_RUNTIME_PROOF.md"
         skill_runtime_proof_present = skill_runtime_proof_path.exists()
-        skill_runtime_proof_valid = _skill_runtime_proof_valid(skill_runtime_proof_path)
+        skill_runtime_proof_valid = _skill_runtime_proof_valid(
+            skill_runtime_proof_path,
+            expected_agent_cli=str(initial_metrics.get("runner") or initial_metrics.get("provider") or "") or None,
+        )
 
         initial_diff_patch = initial_run / "diff.patch"
         initial_diff_stat = initial_run / "diff_stat.txt"
@@ -881,7 +907,7 @@ def score_bundle(bundle_path: Path | str) -> dict[str, object]:
             "bundle": str(bundle_path),
             "run_id": run_id,
             "task_slug": initial_metrics.get("task_slug") or initial_provenance.get("task_slug"),
-            "arm_slug": _arm_slug_from_run_id(run_id),
+            "arm_slug": _arm_slug_from_evidence(run_id, initial_metrics, initial_provenance),
             "bundle_type": bundle_type,
             **pressure_summary,
             "solution_latency_observable": initial_latency.get("solution_latency_observable"),

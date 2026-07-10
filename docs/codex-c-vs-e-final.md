@@ -51,12 +51,12 @@ SKILL_PLUGIN_DIR="$PWD/local_plugins/ai-engineering-skills"
 
 | Dimension | Result |
 | --- | --- |
-| Functional correctness | Tasks 1-4 were functional green across C and E. Task 5 failed hidden trust checks in both arms. Tasks 6-7 had public/hidden pass evidence, with recovery classifications showing resume/artifact gaps. |
+| Functional correctness | Tasks 1-4 were functional green across C and E. Task 5 failed hidden trust checks in both arms. Tasks 6-7 had public and hidden pass evidence. Their earlier recovery failures were parser artifacts caused by structured evaluator output not being recognized. |
 | Hidden evaluator pass/fail | Initial hidden checks passed for Tasks 1-4, 6, and 7 in both arms. Task 5 hidden checks failed in both arms. |
-| Full-resume behavior | Tasks 1-4 passed in both arms. Task 5 was not resumed. Tasks 6-7 had verify/hidden pass output but failed recovery classification. |
-| Stripped-resume behavior | Tasks 1-4 passed in both arms. Task 5 was not resumed. Tasks 6-7 had verify/hidden pass output but failed recovery classification. |
+| Full-resume behavior | Tasks 1-4 passed in both arms. Task 5 was not resumed. Tasks 6-7 had verify/hidden pass output; the generic recovery parser previously failed to recognize their structured evaluator status. |
+| Stripped-resume behavior | Tasks 1-4 passed in both arms. Task 5 was not resumed. Tasks 6-7 had verify/hidden pass output; the generic recovery parser previously failed to recognize their structured evaluator status. |
 | Audit/artifact quality | E produced workflow artifacts on every attempted E initial row. Tasks 1-4 E were bench-ready. Tasks 5-7 E show that artifacts can exist while hidden or artifact-contract gates still fail. |
-| Skill runtime proof validity | E proof was valid on initial rows where produced. Stripped E phases for Tasks 1-4 rebuilt missing proof via finalizer. Tasks 6-7 still failed artifact-contract recovery in resume phases. |
+| Skill runtime proof validity | E proof was valid on initial rows where produced. Stripped E phases for Tasks 1-4 rebuilt missing proof via finalizer. The original Task 6-7 artifact-contract labels were classification errors; proof validity and functional status must be reported independently. |
 | Terminal/turn evidence | Codex JSONL was captured and normalized for all run phases. Metrics reported `actual_turns=1` for each captured phase and `reached_max_turns=false`. |
 | Cost/time/token metrics | 38 phase metrics were captured. Aggregate observed totals: `input_tokens=12263079`, `output_tokens=256244`, `reasoning_output_tokens=113602`, `wall_clock_seconds=4737.985`. Cost fields were not populated. |
 
@@ -77,20 +77,27 @@ SKILL_PLUGIN_DIR="$PWD/local_plugins/ai-engineering-skills"
 ### Where E Added Audit Or Resumability Value
 
 - On Tasks 1-4, E added valid proof/artifact evidence while matching C's functional green outcome.
-- On Tasks 6-7, E left richer audit evidence even when the recovery classifier still rejected resume artifact readiness.
+- On Tasks 6-7, E left richer audit evidence while matching C's functional result; the original recovery rejection was a parser defect.
 
 ### Where Skills Did Not Help Or Added Ceremony
 
 - Task 5 failed hidden analytical trust checks in both arms; E artifacts did not make the answer trustworthy.
-- Tasks 6-7 show ceremony without bench-ready recovery status in resume phases.
+- Tasks 6-7 show richer E ceremony without a demonstrated functional or resume advantage.
 - E generated more files and larger diffs on several rows, which is useful for audit but not automatically better for small fixes.
 
 ### Failures And Limitations
 
 - Task 5 is a real hidden failure for both C and E.
-- Task 6 resume phases had verify/hidden pass output but failed recovery classification: C as `functional`, E as `artifact contract`.
-- Task 7 functional hidden JSON reported `overall_green=true`, but recovery classification still failed: C as `functional`, E as `artifact contract`.
-- Some scorecard arm labels for C appear as `unknown`; run provenance correctly records `arm_slug` as `C-codex`.
+- Task 6 and Task 7 were functional passes; their earlier recovery failures were caused by the generic parser not consuming structured evaluator output.
+- The original E artifact-contract labels conflated valid proof with functional status. The repaired classifier reports these as separate axes.
+- C arm labels now come from provenance first and fall back to `_C_` run-ID inference.
+
+## Adversarial Reassessment
+
+- The binary functional pattern is tied: both arms passed Tasks 1-4, 6, and 7, and both failed Task 5.
+- Task 5 is not a qualitative tie: E rejected the strongest causal overclaim and found the date inconsistency, but still missed denominator inconsistency and leakage.
+- In the inspected Task 4-7 initial runs, E used about 2x the wall time and tokens while producing richer audit artifacts.
+- Validator-compatible proof is agent-declared evidence, not runtime-hook proof. Provider-specific claims are now checked against the recorded runner.
 
 ## Explicit Limitations
 
@@ -153,5 +160,5 @@ Scorecard:
 ```bash
 python -m benchmark_harness.scorecard \
   vfinal_codex_*_gpt54mini_medium-eval-bundle.tar.gz \
-  > benchmark-data/codex-c-vs-e-gpt54mini-medium-scorecard.csv
+  --out benchmark-data/codex-c-vs-e-gpt54mini-medium-scorecard.csv
 ```
