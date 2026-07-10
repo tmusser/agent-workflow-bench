@@ -211,4 +211,7 @@ Codex provider items are different units; compare outcomes, wall time, token use
 normalized tail fractions rather than raw unit counts.
 '''
 if "## Provider observability fields" not in scorecard_text:
-    scorecard_docs.write_text(scorecard_text.rstrip() + addition + "\n", encoding="utf-8")
+    scorecard_docs.write_text(
+        scorecard_text.rstrip() + addition.rstrip() + "\n",
+        encoding="utf-8",
+    )
