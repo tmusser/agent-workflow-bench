@@ -203,6 +203,28 @@ For arm-specific bench-ready rules:
 - `E-ai-engineering-skills`: bench-ready requires functional green plus
   `VERIFY.md` and a valid `SKILL_RUNTIME_PROOF.md`.
 
+## Codex item timeline
+
+Codex `exec --json` can expose one provider turn while still emitting many ordered
+`item.started`, `item.completed`, and `item.updated` records. The normalized trace now
+keeps those as a separate provider-item timeline instead of pretending each command is
+a conversational turn.
+
+The item timeline records safe metadata only and omits raw commands, outputs, and paths.
+It can report:
+
+- distinct provider items, command executions, and file-change items;
+- command categories such as inspection, test, verification, and proof validation;
+- source, test, and audit-artifact change categories;
+- the first source edit, first test command, first verification command, first audit
+  artifact write, and first skill-proof write;
+- the number of later provider items after selected milestones.
+
+These fields sharpen ceremony and audit-tail analysis for Codex runs, but they do not
+make functional first-green observable. A first source edit or first test is not proof
+that the task was correct at that item. Continue to leave `first_functional_green_turn`
+and related fields empty unless evaluator checkpoints were actually observed.
+
 ## Interpretation
 
 Use solution latency as a waste and stopping-behavior metric only when

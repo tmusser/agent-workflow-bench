@@ -725,3 +725,36 @@ def test_scorecard_handles_mixed_eval_and_initial_fail_bundles(tmp_path: Path, c
     assert data[1]["full_resume_verify_exit"] == "not_run"
     assert data[0]["skill_runtime_proof_valid"] is False
     assert data[1]["skill_runtime_proof_valid"] is True
+
+def test_trace_summary_surfaces_codex_item_timeline(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    write(
+        run_dir / "agent_turn_trace_summary.json",
+        json.dumps(
+            {
+                "trace_fidelity": "turn_event",
+                "turns_observed": 1,
+                "provider_item_timeline_observable": True,
+                "provider_items_observed": 12,
+                "command_execution_items_observed": 7,
+                "file_change_items_observed": 3,
+                "first_source_edit_item": 4,
+                "first_test_command_item": 8,
+                "first_verification_command_item": 9,
+                "first_audit_artifact_write_item": 10,
+                "first_skill_proof_write_item": 11,
+                "items_after_first_source_edit": 8,
+                "items_after_first_test_command": 4,
+                "items_after_first_audit_artifact_write": 2,
+            }
+        )
+        + "\n",
+    )
+
+    summary = scorecard._trace_summary(run_dir)
+
+    assert summary["provider_item_timeline_observable"] is True
+    assert summary["provider_items_observed"] == 12
+    assert summary["first_source_edit_item"] == 4
+    assert summary["first_skill_proof_write_item"] == 11
+    assert summary["items_after_first_audit_artifact_write"] == 2
