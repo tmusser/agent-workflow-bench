@@ -1,6 +1,6 @@
 Benchmark arm: E — ai-engineering-skills.
 
-Use the ai-engineering-skills plugin, not just wrapper prose.
+Use the pinned ai-engineering-skills files when they are actually accessible. Do not claim provider-native skill invocation unless runtime evidence supports it.
 
 Use the smallest native workflow that fits the task. Keep artifacts concise. For tiny bugfix tasks, prioritize the code fix before long artifacts.
 
@@ -56,11 +56,11 @@ SKILL_RUNTIME_PROOF.md must use this exact structure and fill every field with c
 - Install stdout/stderr path: benchmark-data/skill-repos/pinned_skill_repos.csv
 
 ## Activation
-- Agent CLI: Claude Code
-- Activation mechanism: namespaced skill invocation from pinned local plugin
+- Agent CLI: identify the actual active CLI, for example Codex CLI or Claude Code
+- Activation mechanism: describe only the mechanism supported by evidence; for Codex, use pinned local skill files made available through the runtime context unless stronger evidence exists
 - Prompt wrapper path: arms/E-ai-engineering-skills.md
-- Agent-visible skill files: list the actual namespaced skills used
-- Environment variables relevant to skill loading: CLAUDE_PLUGIN_DIR
+- Agent-visible skill files: list the actual skill files read or namespaced skills invoked
+- Environment variables relevant to skill loading: use SKILL_PLUGIN_DIR for Codex or CLAUDE_PLUGIN_DIR for Claude, whichever actually applies
 
 ## Pre-run availability check
 - Command run: test -f .benchmark/SKILL_RUNTIME_CONTEXT.md
