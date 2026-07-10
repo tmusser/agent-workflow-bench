@@ -418,6 +418,8 @@ def run(
         {
             "checkpoint_coverage_complete": coverage_complete,
             "stable_snapshot_coverage_complete": stable_live_snapshots,
+            "item_solution_latency_observable": coverage_complete,
+            "checkpoint_boundary_resolution": "provider_item_completed_then_process_group_pause",
             "workspace_states_observed": len(captures),
             "workspace_states_skipped": distinct_states_skipped,
             "checkpoint_snapshot_pause_seconds": round(sum(item.pause_seconds for item in captures), 6),
@@ -444,6 +446,7 @@ def run(
             "workspace_states_skipped": distinct_states_skipped,
             "checkpoint_coverage_complete": coverage_complete,
             "stable_snapshot_coverage_complete": stable_live_snapshots,
+            "checkpoint_boundary_resolution": "provider_item_completed_then_process_group_pause",
         },
     )
     _write_text(exit_path, f"{exit_code}\n")

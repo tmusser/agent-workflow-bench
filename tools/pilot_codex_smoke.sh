@@ -407,7 +407,7 @@ run_codex_agent() {
   echo "  prompt mode: $CODEX_PROMPT_MODE"
   echo
 
-  local root_dir prompt_abs stdout_abs stderr_abs exit_abs command_json_abs timing_abs observer_ran
+  local root_dir prompt_abs stdout_abs stderr_abs exit_abs command_json_abs timing_abs observer_ran checkpoint_hidden_evaluator_module
   root_dir="$(pwd)"
   prompt_abs="${root_dir}/${prompt_file}"
   stdout_abs="${root_dir}/${out_dir}/codex_stdout.txt"
@@ -416,6 +416,10 @@ run_codex_agent() {
   command_json_abs="${root_dir}/${out_dir}/codex_command.json"
   timing_abs="${root_dir}/${out_dir}/codex_checkpoint_timing.json"
   observer_ran=false
+  checkpoint_hidden_evaluator_module="$HIDDEN_EVALUATOR_MODULE"
+  if [[ "$label" != "initial" && -n "$RESUME_HIDDEN_EVALUATOR_MODULE" ]]; then
+    checkpoint_hidden_evaluator_module="$RESUME_HIDDEN_EVALUATOR_MODULE"
+  fi
 
   write_provenance "$out_dir" "$label"
   build_codex_command
@@ -447,7 +451,7 @@ PY
       --prompt-file "$prompt_abs" \
       --prompt-mode "$CODEX_PROMPT_MODE" \
       --command-json "$command_json_abs" \
-      --hidden-evaluator-module "$HIDDEN_EVALUATOR_MODULE" \
+      --hidden-evaluator-module "$checkpoint_hidden_evaluator_module" \
       --max-checkpoints "$CODEX_MAX_CHECKPOINTS"
     exit_code=$?
     observer_ran=true

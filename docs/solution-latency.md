@@ -236,6 +236,12 @@ Snapshot evaluation happens after Codex exits so hidden checks do not steer the 
 consume its context. The runner briefly pauses the Codex process group only while copying
 a stable workspace snapshot and records that pause separately from evaluator time.
 
+The resolution is a completed provider-item boundary followed by process-group pause. This
+is the strongest observation available from the current Codex stream, but it is not an
+instruction-level timestamp: a very small event-to-pause scheduling race remains possible.
+Describe the result as the first evaluator-green captured provider item, and require
+`checkpoint_coverage_complete=true` before treating it as the first observed green state.
+
 Do not call all work after functional green "waste" automatically. For E arms, work
 between functional green and bench-ready green may be required verification or proof.
 Use the two tails separately and treat incomplete checkpoint coverage as non-conclusive.

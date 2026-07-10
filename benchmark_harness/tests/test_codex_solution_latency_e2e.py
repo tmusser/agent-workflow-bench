@@ -69,6 +69,8 @@ print(json.dumps({"type": "turn.completed"}), flush=True)
     assert exit_code == 0
     summary = json.loads((run_dir / "agent_turn_trace_summary.json").read_text(encoding="utf-8"))
     assert summary["checkpoint_coverage_complete"] is (os.name == "posix")
+    assert summary["item_solution_latency_observable"] is (os.name == "posix")
+    assert summary["checkpoint_boundary_resolution"] == "provider_item_completed_then_process_group_pause"
     assert summary["workspace_states_observed"] == 2
     assert summary["workspace_states_skipped"] == 0
     assert summary["first_functional_green_item"] == 2
