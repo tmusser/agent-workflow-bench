@@ -220,15 +220,36 @@ It can report:
   artifact write, and first skill-proof write;
 - the number of later provider items after selected milestones.
 
-These fields sharpen ceremony and audit-tail analysis for Codex runs, but they do not
-make functional first-green observable. A first source edit or first test is not proof
-that the task was correct at that item. Continue to leave `first_functional_green_turn`
-and related fields empty unless evaluator checkpoints were actually observed.
+With Codex workspace checkpoints enabled, the runner captures each distinct workspace
+state observed at completed provider-item boundaries and evaluates those snapshots after
+the Codex process exits. It reports:
+
+- `first_functional_green_item` and `items_after_first_functional_green`;
+- `first_bench_ready_green_item` and `items_after_first_bench_ready_green`;
+- `functional_to_bench_ready_items`, which separates artifact completion from the broader
+  post-functional tail;
+- `checkpoint_coverage_complete`, which must be true before identifying the first
+  evaluator-green captured provider item.
+
+Snapshot evaluation happens after Codex exits so hidden checks do not steer the agent or
+consume its context. The runner briefly pauses the Codex process group only while copying
+a stable workspace snapshot and records that pause separately from evaluator time.
+
+The resolution is a completed provider-item boundary followed by process-group pause. This
+is the strongest observation available from the current Codex stream, but it is not an
+instruction-level timestamp: a very small event-to-pause scheduling race remains possible.
+Describe the result as the first evaluator-green captured provider item, and require
+`checkpoint_coverage_complete=true` before treating it as the first observed green state.
+
+Do not call all work after functional green "waste" automatically. For E arms, work
+between functional green and bench-ready green may be required verification or proof.
+Use the two tails separately and treat incomplete checkpoint coverage as non-conclusive.
 
 ## Interpretation
 
 Use solution latency as a waste and stopping-behavior metric only when
 `solution_latency_observable` is `true`.
 
-If it is `false`, do not say the agent solved the task on a particular turn. Say
-only that the final workspace was green and the first-green turn was not captured.
+If it is `false`, do not say the agent solved the task on a particular turn or provider
+item. Say only that the final workspace was green and the first-green point was not
+captured.
