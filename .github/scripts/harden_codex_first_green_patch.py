@@ -12,6 +12,34 @@ def replace_once(path: str, old: str, new: str) -> None:
     target.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
+# The integration patch adds an optional provider item to a legacy helper. Keep
+# the optional parameter after all required parameters so the signature remains valid.
+replace_once(
+    "benchmark_harness/solution_latency_observer.py",
+    '''    assistant_message_id: str | None,
+    wall_seconds: float,
+    provider_item_index: int | None = None,
+    verify_exit: int,
+    hidden_exit: int,
+    functional_green: bool,
+    bench_ready_green: bool,
+    permission_denials_delta: int,
+    checkpoint_eval_errors: list[str],
+) -> dict[str, Any]:
+''',
+    '''    assistant_message_id: str | None,
+    wall_seconds: float,
+    verify_exit: int,
+    hidden_exit: int,
+    functional_green: bool,
+    bench_ready_green: bool,
+    permission_denials_delta: int,
+    checkpoint_eval_errors: list[str],
+    provider_item_index: int | None = None,
+) -> dict[str, Any]:
+''',
+)
+
 replace_once(
     "benchmark_harness/codex_solution_latency_observer.py",
     '''    snapshot_root: Path
