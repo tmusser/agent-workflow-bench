@@ -1,0 +1,54 @@
+name: Apply evidence classification repair
+
+on:
+  push:
+    branches:
+      - fix/codex-evidence-classification
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/codex-evidence-classification
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install package
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+
+      - name: Apply deterministic repair
+        run: python tools/apply_evidence_fix.py
+
+      - name: Run focused tests
+        run: >-
+          python -m pytest -q
+          benchmark_harness/tests/test_skill_runtime_recovery.py
+          benchmark_harness/tests/test_validate_skill_runtime_proof.py
+          benchmark_harness/tests/test_scorecard.py
+          benchmark_harness/tests/test_task5_hidden_evaluator.py
+
+      - name: Run full harness tests
+        run: python -m pytest benchmark_harness/tests -q
+
+      - name: Validate diff
+        run: git diff --check
+
+      - name: Commit repaired implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix Codex evidence classification and proof claims'
+          git push origin HEAD:fix/codex-evidence-classification
