@@ -33,13 +33,28 @@ jobs:
         run: python tools/apply_evidence_fix.py
 
       - name: Run focused tests
-        run: >-
-          python -m pytest -q
-          benchmark_harness/tests/test_evidence_status_regressions.py
-          benchmark_harness/tests/test_skill_runtime_recovery.py
-          benchmark_harness/tests/test_validate_skill_runtime_proof.py
-          benchmark_harness/tests/test_scorecard.py
-          benchmark_harness/tests/test_task5_hidden_evaluator.py
+        id: focused
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -m pytest -q --tb=short \
+            benchmark_harness/tests/test_evidence_status_regressions.py \
+            benchmark_harness/tests/test_skill_runtime_recovery.py \
+            benchmark_harness/tests/test_validate_skill_runtime_proof.py \
+            benchmark_harness/tests/test_scorecard.py \
+            benchmark_harness/tests/test_task5_hidden_evaluator.py \
+            2>&1 | tee focused-tests.log
+
+      - name: Upload focused failure log
+        if: steps.focused.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-test-failure
+          path: focused-tests.log
+
+      - name: Stop after focused failure
+        if: steps.focused.outcome == 'failure'
+        run: exit 1
 
       - name: Run full harness tests
         run: python -m pytest benchmark_harness/tests -q
