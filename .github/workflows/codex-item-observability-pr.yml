@@ -1,0 +1,50 @@
+name: Codex item observability PR
+
+on:
+  push:
+    branches:
+      - feature/codex-item-observability
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply deterministic patch
+        run: python .github/scripts/apply_codex_item_observability.py
+
+      - name: Run focused observability tests
+        run: >-
+          python -m pytest
+          benchmark_harness/tests/test_agent_turn_trace.py
+          benchmark_harness/tests/test_scorecard.py
+          -q
+
+      - name: Run full harness tests
+        run: python -m pytest benchmark_harness/tests -q
+
+      - name: Validate shell and diff hygiene
+        run: |
+          bash -n tools/pilot_codex_smoke.sh tools/pilot_smoke.sh tools/pilot_smoke_legacy.sh
+          git diff --check
+
+      - name: Commit final branch state
+        run: |
+          rm -f .github/scripts/apply_codex_item_observability.py
+          rm -f .github/workflows/codex-item-observability-pr.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add Codex provider-item observability"
+          git push origin HEAD:feature/codex-item-observability
