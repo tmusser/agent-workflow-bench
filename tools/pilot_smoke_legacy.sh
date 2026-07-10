@@ -34,6 +34,7 @@ CLAUDE_CMD="${CLAUDE_CMD:-claude}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-sonnet}"
 CLAUDE_EFFORT="${CLAUDE_EFFORT:-low}"
 CLAUDE_MAX_TURNS="${CLAUDE_MAX_TURNS:-20}"
+CLAUDE_MAX_CHECKPOINTS="${CLAUDE_MAX_CHECKPOINTS:-32}"
 CLAUDE_PERMISSION_MODE="${CLAUDE_PERMISSION_MODE:-dangerously-skip-permissions}"
 CLAUDE_PLUGIN_DIR="${CLAUDE_PLUGIN_DIR:-}"
 CLAUDE_OUTPUT_FORMAT="${CLAUDE_OUTPUT_FORMAT:-text}"
@@ -435,11 +436,16 @@ run_claude_print() {
     observer_mode="stream_json"
   fi
 
-  local root_dir prompt_abs stdout_abs stderr_abs
+  local root_dir prompt_abs stdout_abs stderr_abs timing_abs checkpoint_hidden_evaluator_module
   root_dir="$(pwd)"
   prompt_abs="${root_dir}/${prompt_file}"
   stdout_abs="${root_dir}/${out_dir}/claude_stdout.txt"
   stderr_abs="${root_dir}/${out_dir}/claude_stderr.txt"
+  timing_abs="${root_dir}/${out_dir}/claude_checkpoint_timing.json"
+  checkpoint_hidden_evaluator_module="$HIDDEN_EVALUATOR_MODULE"
+  if [[ "$label" != "initial" && -n "$RESUME_HIDDEN_EVALUATOR_MODULE" ]]; then
+    checkpoint_hidden_evaluator_module="$RESUME_HIDDEN_EVALUATOR_MODULE"
+  fi
 
   local exit_abs exit_code
   exit_abs="${root_dir}/${out_dir}/claude_exit_code.txt"
@@ -479,7 +485,7 @@ PY
     ${pressure_target_pct_arg:+--pressure-target-pct "$pressure_target_pct_arg"}
 
   local observer_cmd=(
-    python -m benchmark_harness.solution_latency_observer run
+    python -m benchmark_harness.claude_solution_latency_observer run
     --repo-root "$repo"
     --run-dir "${root_dir}/${out_dir}"
     --run-id "$RUN_ID"
@@ -492,8 +498,9 @@ PY
     --effort "$CLAUDE_EFFORT"
     --max-turns "$CLAUDE_MAX_TURNS"
     --permission-mode "$CLAUDE_PERMISSION_MODE"
-    --hidden-evaluator-module "$HIDDEN_EVALUATOR_MODULE"
+    --hidden-evaluator-module "$checkpoint_hidden_evaluator_module"
     --mode "$observer_mode"
+    --max-checkpoints "$CLAUDE_MAX_CHECKPOINTS"
   )
   if [[ -n "${CLAUDE_PLUGIN_DIR:-}" ]]; then
     observer_cmd+=(--plugin-dir "$CLAUDE_PLUGIN_DIR")
@@ -508,6 +515,16 @@ import time
 print(time.time_ns())
 PY
 )"
+  if [[ -f "$timing_abs" ]]; then
+    read -r start_ns end_ns < <(python - "$timing_abs" <<'PY'
+import json
+import sys
+from pathlib import Path
+data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(data["process_start_ns"], data["process_end_ns"])
+PY
+)
+  fi
   echo "$exit_code" > "$exit_abs"
 
   write_run_metrics "$out_dir" "$label" "$exit_code" "$start_ns" "$end_ns" "$stdout_abs" "$stderr_abs"

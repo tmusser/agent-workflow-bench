@@ -6,10 +6,11 @@ sharper question:
 
 > On which turn did the run first become public + hidden green?
 
-That requires per-turn evidence. The harness now records checkpoint rows when
-the Claude print-mode helper can observe the run via `stream-json`; otherwise
-it falls back to a conservative `mtime_polling` trace. Older bundles may still
-have only final-state evidence, and those remain unobservable.
+That requires provider-native intermediate evidence. In v0.2.0, both the Claude
+and Codex paths capture stable workspace snapshots during the agent run and evaluate
+them only after the agent exits. Claude prefers `stream-json`; when unavailable it
+falls back to conservative `mtime_polling`. Older bundles may still have only final-
+state evidence, and those remain unobservable.
 
 The normalized trace artifacts are:
 
@@ -26,10 +27,11 @@ Trace fidelity levels are:
 - `checkpoint_only`: the harness observed file changes and checkpoint snapshots, but not exact turn boundaries.
 - `run_level_only`: only final provider result metadata was available.
 
-`mtime_polling` is best-effort. It only sees tracked-file timestamp changes, so
-short runs or edits that touch only untracked files can be missed. When that
-happens, keep `solution_latency_observable` false and do not infer first-green
-post-hoc.
+`mtime_polling` is best-effort sampling and cannot prove complete intermediate
+coverage. The hardened fallback snapshots whole-workspace changes rather than only
+running evaluators against the live tree, but intermediate states can still be missed.
+It therefore keeps `checkpoint_coverage_complete` and `solution_latency_observable`
+false. Do not infer first-green post-hoc.
 
 For separately measured E-arm audit cost and proof-attribution guidance, see
 [docs/finalizer-attribution.md](docs/finalizer-attribution.md).
