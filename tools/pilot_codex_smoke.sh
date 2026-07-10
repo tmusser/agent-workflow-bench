@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+source "$ROOT_DIR/tools/benchmark_python_guard.sh"
+benchmark_python_select
+
 ROOT_MARKER="benchmark_harness"
 TASK_SLUG="${TASK_SLUG:-01-support-sla-boundary}"
 ARM_SLUG="${ARM_SLUG:-C-codex}"
@@ -289,6 +294,16 @@ check_codex_cli() {
   "$CODEX_CMD" --version || true
 }
 
+doctor() {
+  local environment_exit=0 cli_exit=0
+  set +e
+  benchmark_python_doctor || environment_exit=$?
+  check_codex_cli
+  cli_exit=$?
+  set -e
+  [[ "$environment_exit" -eq 0 && "$cli_exit" -eq 0 ]]
+}
+
 init_run() {
   require_root
   mkdir -p "$RUN_DIR"
@@ -380,6 +395,7 @@ warn_if_json_metrics_lack_json_stdout() {
 }
 
 run_codex_agent() {
+  require_benchmark_python || return $?
   local repo="$1"
   local prompt_file="$2"
   local out_dir="$3"
@@ -443,7 +459,7 @@ import pathlib
 import sys
 pathlib.Path(sys.argv[1]).write_text(json.dumps(sys.argv[2:]) + "\n", encoding="utf-8")
 PY
-    python -m benchmark_harness.codex_solution_latency_observer run \
+    "$BENCHMARK_PYTHON" -m benchmark_harness.codex_solution_latency_observer run \
       --repo-root "$repo" \
       --run-dir "${root_dir}/${out_dir}" \
       --run-id "$RUN_ID" \
@@ -454,7 +470,8 @@ PY
       --prompt-mode "$CODEX_PROMPT_MODE" \
       --command-json "$command_json_abs" \
       --hidden-evaluator-module "$checkpoint_hidden_evaluator_module" \
-      --max-checkpoints "$CODEX_MAX_CHECKPOINTS"
+      --max-checkpoints "$CODEX_MAX_CHECKPOINTS" \
+      --benchmark-python "$BENCHMARK_PYTHON"
     exit_code=$?
     observer_ran=true
   else
@@ -545,6 +562,7 @@ run_initial_codex() {
 
 collect_initial() {
   require_root
+  require_benchmark_python || return $?
   local collect_exit_code stop_after_initial
 
   set +e
@@ -580,6 +598,7 @@ run_full_codex() {
 
 collect_full() {
   require_root
+  require_benchmark_python || return $?
   local collect_exit_code
 
   set +e
@@ -606,6 +625,7 @@ run_stripped_codex() {
 
 collect_stripped() {
   require_root
+  require_benchmark_python || return $?
   local collect_exit_code
 
   set +e
@@ -738,7 +758,7 @@ run_command() {
   local cmd="${1:-}"
   case "$cmd" in
     setup) run_preflight_setup ;;
-    doctor) check_codex_cli ;;
+    doctor) doctor ;;
     init) init_run ;;
     run-initial-codex) run_initial_codex ;;
     collect-initial) collect_initial ;;

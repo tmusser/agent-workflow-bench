@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+source "$ROOT_DIR/tools/benchmark_python_guard.sh"
+benchmark_python_select
+
 # v0.4.2 pilot smoke helper v7
 # Drop this into benchmark-v04.2-pilot/tools/ and run from the benchmark root.
 
@@ -254,6 +259,16 @@ run_starter_sanity() {
   fi
 }
 
+doctor() {
+  local environment_exit=0 cli_exit=0
+  set +e
+  benchmark_python_doctor || environment_exit=$?
+  check_claude_cli
+  cli_exit=$?
+  set -e
+  [[ "$environment_exit" -eq 0 && "$cli_exit" -eq 0 ]]
+}
+
 run_preflight_setup() {
   require_root
   ensure_venv_active_or_create
@@ -397,6 +412,7 @@ init_run() {
 }
 
 run_claude_print() {
+  require_benchmark_python || return $?
   local repo="$1"
   local prompt_file="$2"
   local out_dir="$3"
@@ -485,7 +501,7 @@ PY
     ${pressure_target_pct_arg:+--pressure-target-pct "$pressure_target_pct_arg"}
 
   local observer_cmd=(
-    python -m benchmark_harness.claude_solution_latency_observer run
+    "$BENCHMARK_PYTHON" -m benchmark_harness.claude_solution_latency_observer run
     --repo-root "$repo"
     --run-dir "${root_dir}/${out_dir}"
     --run-id "$RUN_ID"
@@ -501,6 +517,7 @@ PY
     --hidden-evaluator-module "$checkpoint_hidden_evaluator_module"
     --mode "$observer_mode"
     --max-checkpoints "$CLAUDE_MAX_CHECKPOINTS"
+    --benchmark-python "$BENCHMARK_PYTHON"
   )
   if [[ -n "${CLAUDE_PLUGIN_DIR:-}" ]]; then
     observer_cmd+=(--plugin-dir "$CLAUDE_PLUGIN_DIR")
@@ -784,6 +801,7 @@ run_initial_claude() {
 
 collect_initial() {
   require_root
+  require_benchmark_python || return $?
   mkdir -p "$RUN_DIR"
 
   if [[ ! -d "$WORK/.git" ]]; then
@@ -793,9 +811,9 @@ collect_initial() {
   fi
 
   set +e
-  (cd "$WORK" && ./VERIFY.sh) > "$RUN_DIR/verification_final.txt" 2>&1
+  (cd "$WORK" && PATH="$(dirname "$BENCHMARK_PYTHON"):$PATH" ./VERIFY.sh) > "$RUN_DIR/verification_final.txt" 2>&1
   local verify_code=$?
-  python -m "$HIDDEN_EVALUATOR_MODULE" \
+  "$BENCHMARK_PYTHON" -m "$HIDDEN_EVALUATOR_MODULE" \
     --repo "$WORK" > "$RUN_DIR/hidden_evaluator_final.txt" 2>&1
   local hidden_code=$?
   set -e
@@ -958,6 +976,7 @@ run_stripped_claude() {
 }
 
 collect_resume_condition() {
+  require_benchmark_python || return $?
   local condition="$1"
   local repo out
   if [[ "$condition" == "full" ]]; then
@@ -978,9 +997,9 @@ collect_resume_condition() {
   fi
 
   set +e
-  (cd "$repo" && ./VERIFY.sh) > "$out/verification.txt" 2>&1
+  (cd "$repo" && PATH="$(dirname "$BENCHMARK_PYTHON"):$PATH" ./VERIFY.sh) > "$out/verification.txt" 2>&1
   local verify_code=$?
-  python -m "$RESUME_HIDDEN_EVALUATOR_MODULE" \
+  "$BENCHMARK_PYTHON" -m "$RESUME_HIDDEN_EVALUATOR_MODULE" \
     --repo "$repo" > "$out/hidden_evaluator.txt" 2>&1
   local hidden_code=$?
   set -e
@@ -1175,7 +1194,7 @@ set -- "${PARSED_ARGS[@]}"
 cmd="${1:-}"
 case "$cmd" in
   setup) run_preflight_setup ;;
-  doctor) check_claude_cli ;;
+  doctor) doctor ;;
   init) init_run ;;
   run-initial-claude) run_initial_claude ;;
   collect-initial) collect_initial ;;

@@ -25,7 +25,12 @@ from benchmark_harness.agent_turn_trace import (
     parse_json_records,
     process_codex_record,
 )
-from benchmark_harness.solution_latency_observer import evaluate_checkpoint_snapshot
+from benchmark_harness.solution_latency_observer import (
+    BenchmarkPythonEnvironment,
+    evaluate_checkpoint_snapshot,
+    resolve_benchmark_python,
+    validate_benchmark_python,
+)
 
 IGNORED_DIRS = {
     ".git",
@@ -211,10 +216,13 @@ def evaluate_captures(
     arm_slug: str,
     phase: str,
     hidden_evaluator_module: str,
+    benchmark_python: Path | None = None,
+    environment: BenchmarkPythonEnvironment | None = None,
     verify_runner: Callable[[Path, Path], int] | None = None,
     hidden_runner: Callable[[Path, Path], int] | None = None,
 ) -> float:
     started = time.monotonic()
+    benchmark_python = benchmark_python or resolve_benchmark_python()
     for capture in captures:
         try:
             record = evaluate_checkpoint_snapshot(
@@ -233,6 +241,8 @@ def evaluate_captures(
                 wall_seconds=capture.wall_seconds,
                 verify_runner=verify_runner,
                 hidden_runner=hidden_runner,
+                benchmark_python=benchmark_python,
+                environment=environment,
             )
             recorder.record_checkpoint(
                 checkpoint_index=capture.checkpoint_index,
@@ -247,6 +257,13 @@ def evaluate_captures(
                 bench_ready_green=record["bench_ready_green"],
                 permission_denials_delta=0,
                 checkpoint_eval_errors=record["checkpoint_eval_errors"],
+                benchmark_python=record["benchmark_python"],
+                benchmark_python_realpath=record.get("benchmark_python_realpath"),
+                benchmark_python_version=record["benchmark_python_version"],
+                benchmark_python_prefix=record.get("benchmark_python_prefix"),
+                benchmark_python_base_prefix=record.get("benchmark_python_base_prefix"),
+                evaluation_environment_valid=record["evaluation_environment_valid"],
+                evaluation_environment_errors=record["evaluation_environment_errors"],
                 notes=[capture.trigger, "evaluated after Codex exited"],
             )
             _write_text(
@@ -271,8 +288,17 @@ def run(
     command_json: Path,
     hidden_evaluator_module: str,
     max_checkpoints: int,
+    benchmark_python: str | Path | None = None,
 ) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
+    selected_python = resolve_benchmark_python(benchmark_python)
+    environment = validate_benchmark_python(selected_python)
+    if not environment.valid:
+        _write_text(
+            run_dir / "solution_latency_observer_error.txt",
+            "evaluation environment invalid; agent was not started\n" + "\n".join(environment.errors) + "\n",
+        )
+        return 2
     stdout_path = run_dir / "codex_stdout.txt"
     stderr_path = run_dir / "codex_stderr.txt"
     exit_path = run_dir / "codex_exit_code.txt"
@@ -400,6 +426,8 @@ def run(
         arm_slug=arm_slug,
         phase=phase,
         hidden_evaluator_module=hidden_evaluator_module,
+        benchmark_python=selected_python,
+        environment=environment,
     )
     exit_code = proc.returncode or 0
     recorder.record_run_result(
@@ -413,13 +441,18 @@ def run(
     stable_live_snapshots = all(
         item.process_group_paused for item in captures if item.trigger != "final_workspace"
     )
-    coverage_complete = distinct_states_skipped == 0 and stable_live_snapshots
+    coverage_complete = (
+        summary.get("evaluation_environment_valid", True) is True
+        and distinct_states_skipped == 0
+        and stable_live_snapshots
+    )
     summary.update(
         {
             "checkpoint_coverage_complete": coverage_complete,
             "stable_snapshot_coverage_complete": stable_live_snapshots,
             "item_solution_latency_observable": coverage_complete,
             "checkpoint_boundary_resolution": "provider_item_completed_then_process_group_pause",
+            "benchmark_python": str(selected_python),
             "workspace_states_observed": len(captures),
             "workspace_states_skipped": distinct_states_skipped,
             "checkpoint_snapshot_pause_seconds": round(sum(item.pause_seconds for item in captures), 6),
@@ -467,6 +500,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--command-json", required=True, type=Path)
     parser.add_argument("--hidden-evaluator-module", required=True)
     parser.add_argument("--max-checkpoints", type=int, default=32)
+    parser.add_argument("--benchmark-python", default=None)
     args = parser.parse_args(argv)
     if args.max_checkpoints < 1:
         parser.error("--max-checkpoints must be at least 1")
@@ -482,6 +516,7 @@ def main(argv: list[str] | None = None) -> int:
         command_json=args.command_json,
         hidden_evaluator_module=args.hidden_evaluator_module,
         max_checkpoints=args.max_checkpoints,
+        benchmark_python=args.benchmark_python,
     )
 
 

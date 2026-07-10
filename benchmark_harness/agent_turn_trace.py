@@ -760,6 +760,13 @@ class AgentTurnTraceRecorder:
         permission_denials_delta: int | None = None,
         checkpoint_eval_errors: list[str] | None = None,
         provider_item_index: int | None = None,
+        benchmark_python: str | None = None,
+        benchmark_python_realpath: str | None = None,
+        benchmark_python_version: str | None = None,
+        benchmark_python_prefix: str | None = None,
+        benchmark_python_base_prefix: str | None = None,
+        evaluation_environment_valid: bool | None = None,
+        evaluation_environment_errors: list[str] | None = None,
         notes: list[str] | None = None,
     ) -> dict[str, Any]:
         return self._emit_row(
@@ -776,6 +783,13 @@ class AgentTurnTraceRecorder:
             bench_ready_green=bench_ready_green,
             permission_denials_delta=max(permission_denials_delta or 0, 0),
             checkpoint_eval_errors=checkpoint_eval_errors or [],
+            benchmark_python=benchmark_python,
+            benchmark_python_realpath=benchmark_python_realpath,
+            benchmark_python_version=benchmark_python_version,
+            benchmark_python_prefix=benchmark_python_prefix,
+            benchmark_python_base_prefix=benchmark_python_base_prefix,
+            evaluation_environment_valid=evaluation_environment_valid,
+            evaluation_environment_errors=evaluation_environment_errors or [],
             notes=notes or [OBSERVED_NOTE],
         )
 
@@ -957,6 +971,36 @@ def _summarize_rows(
     )
     checkpoints_observed = sum(1 for row in rows if row.get("event_kind") == "checkpoint")
     checkpoint_rows = [row for row in rows if row.get("event_kind") == "checkpoint"]
+    environment_rows = [row for row in checkpoint_rows if "evaluation_environment_valid" in row]
+    if not environment_rows:
+        evaluation_environment_valid: bool | None = None
+    elif all(row.get("evaluation_environment_valid") is True for row in environment_rows) and len(environment_rows) == len(checkpoint_rows):
+        evaluation_environment_valid = True
+    else:
+        # A present-but-invalid value, or a mixture of old and new checkpoint
+        # schemas, is evidence against conclusive first-green claims.
+        evaluation_environment_valid = False
+    evaluation_environment_errors = sorted({
+        error
+        for row in environment_rows
+        for error in (row.get("evaluation_environment_errors") or [])
+        if isinstance(error, str) and error
+    })
+    benchmark_python = next(
+        (row.get("benchmark_python") for row in environment_rows if row.get("benchmark_python")), None
+    )
+    benchmark_python_realpath = next(
+        (row.get("benchmark_python_realpath") for row in environment_rows if row.get("benchmark_python_realpath")), None
+    )
+    benchmark_python_version = next(
+        (row.get("benchmark_python_version") for row in environment_rows if row.get("benchmark_python_version")), None
+    )
+    benchmark_python_prefix = next(
+        (row.get("benchmark_python_prefix") for row in environment_rows if row.get("benchmark_python_prefix")), None
+    )
+    benchmark_python_base_prefix = next(
+        (row.get("benchmark_python_base_prefix") for row in environment_rows if row.get("benchmark_python_base_prefix")), None
+    )
     provider_item_summary = _summarize_provider_items(rows)
     file_changing_tool_uses_observed += int(provider_item_summary.get("file_change_items_observed") or 0)
 
@@ -1015,11 +1059,11 @@ def _summarize_rows(
         else None
     )
 
-    item_solution_latency_observable = bool(checkpoint_rows) and provider_items_observed > 0
-    solution_latency_observable = item_solution_latency_observable or (
+    item_solution_latency_observable = evaluation_environment_valid is True and bool(checkpoint_rows) and provider_items_observed > 0
+    solution_latency_observable = evaluation_environment_valid is True and (item_solution_latency_observable or (
         trace_fidelity != TRACE_FIDELITY_RUN_LEVEL_ONLY
         and (first_functional_green_turn is not None or first_bench_ready_green_turn is not None)
-    )
+    ))
     if item_solution_latency_observable:
         solution_latency_source = "codex_workspace_snapshots"
         solution_latency_note = "observed_from_provider_item_checkpoints"
@@ -1065,6 +1109,13 @@ def _summarize_rows(
         "solution_latency_source": solution_latency_source,
         "solution_latency_note": solution_latency_note,
         "checkpoint_eval_errors": checkpoint_eval_errors,
+        "benchmark_python": benchmark_python,
+        "benchmark_python_realpath": benchmark_python_realpath,
+        "benchmark_python_version": benchmark_python_version,
+        "benchmark_python_prefix": benchmark_python_prefix,
+        "benchmark_python_base_prefix": benchmark_python_base_prefix,
+        "evaluation_environment_valid": evaluation_environment_valid,
+        "evaluation_environment_errors": evaluation_environment_errors,
         "raw_content_omitted": True,
         **provider_item_summary,
         **skill_summary,

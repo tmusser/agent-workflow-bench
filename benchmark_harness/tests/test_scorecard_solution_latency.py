@@ -123,3 +123,17 @@ def test_scorecard_includes_solution_latency_fields(tmp_path: Path):
     assert row["stripped_turn_trace_present"] is False
     assert row["full_resume_solution_latency_note"] == "phase_not_run"
     assert row["stripped_resume_solution_latency_note"] == "phase_not_run"
+
+
+def test_scorecard_csv_preserves_environment_tristate(tmp_path: Path):
+    output = tmp_path / "scorecard.csv"
+    scorecard.write_csv(
+        [{"initial_evaluation_environment_valid": None,
+          "full_evaluation_environment_valid": True,
+          "stripped_evaluation_environment_valid": False}],
+        output,
+    )
+    text = output.read_text(encoding="utf-8")
+    assert "null" in text
+    assert "true" in text
+    assert "false" in text

@@ -50,6 +50,13 @@ SOLUTION_LATENCY_FIELDS = [
     "solution_latency_observable",
     "solution_latency_source",
     "solution_latency_note",
+    "benchmark_python",
+    "benchmark_python_realpath",
+    "benchmark_python_version",
+    "benchmark_python_prefix",
+    "benchmark_python_base_prefix",
+    "evaluation_environment_valid",
+    "evaluation_environment_errors",
 ]
 
 TRACE_SUMMARY_FIELDS = [
@@ -90,6 +97,10 @@ TRACE_SUMMARY_FIELDS = [
     "checkpoint_evaluator_seconds",
     "workspace_states_observed",
     "workspace_states_skipped",
+    "benchmark_python",
+    "benchmark_python_version",
+    "evaluation_environment_valid",
+    "evaluation_environment_errors",
 ]
 
 FINALIZER_FIELDS = [
@@ -167,6 +178,13 @@ ROW_FIELDS = [
     "initial_functional_to_bench_ready_items",
     "initial_item_solution_latency_observable",
     "initial_checkpoint_coverage_complete",
+    "initial_benchmark_python",
+    "initial_benchmark_python_realpath",
+    "initial_benchmark_python_version",
+    "initial_benchmark_python_prefix",
+    "initial_benchmark_python_base_prefix",
+    "initial_evaluation_environment_valid",
+    "initial_evaluation_environment_errors",
     "initial_stable_snapshot_coverage_complete",
     "initial_checkpoint_boundary_resolution",
     "initial_checkpoint_evaluation_deferred",
@@ -256,6 +274,13 @@ ROW_FIELDS = [
     "full_functional_to_bench_ready_items",
     "full_item_solution_latency_observable",
     "full_checkpoint_coverage_complete",
+    "full_benchmark_python",
+    "full_benchmark_python_realpath",
+    "full_benchmark_python_version",
+    "full_benchmark_python_prefix",
+    "full_benchmark_python_base_prefix",
+    "full_evaluation_environment_valid",
+    "full_evaluation_environment_errors",
     "full_stable_snapshot_coverage_complete",
     "full_checkpoint_boundary_resolution",
     "full_checkpoint_evaluation_deferred",
@@ -321,6 +346,13 @@ ROW_FIELDS = [
     "stripped_functional_to_bench_ready_items",
     "stripped_item_solution_latency_observable",
     "stripped_checkpoint_coverage_complete",
+    "stripped_benchmark_python",
+    "stripped_benchmark_python_realpath",
+    "stripped_benchmark_python_version",
+    "stripped_benchmark_python_prefix",
+    "stripped_benchmark_python_base_prefix",
+    "stripped_evaluation_environment_valid",
+    "stripped_evaluation_environment_errors",
     "stripped_stable_snapshot_coverage_complete",
     "stripped_checkpoint_boundary_resolution",
     "stripped_checkpoint_evaluation_deferred",
@@ -845,6 +877,13 @@ def _trace_summary(run_dir: Path) -> dict[str, object]:
         "stable_snapshot_coverage_complete": summary.get("stable_snapshot_coverage_complete"),
         "checkpoint_boundary_resolution": summary.get("checkpoint_boundary_resolution"),
         "checkpoint_evaluation_deferred": summary.get("checkpoint_evaluation_deferred"),
+        "benchmark_python": summary.get("benchmark_python"),
+        "benchmark_python_realpath": summary.get("benchmark_python_realpath"),
+        "benchmark_python_version": summary.get("benchmark_python_version"),
+        "benchmark_python_prefix": summary.get("benchmark_python_prefix"),
+        "benchmark_python_base_prefix": summary.get("benchmark_python_base_prefix"),
+        "evaluation_environment_valid": summary.get("evaluation_environment_valid"),
+        "evaluation_environment_errors": summary.get("evaluation_environment_errors"),
         "native_observation_unit": summary.get("native_observation_unit"),
         "checkpoint_snapshot_pause_seconds": summary.get("checkpoint_snapshot_pause_seconds"),
         "checkpoint_evaluator_seconds": summary.get("checkpoint_evaluator_seconds"),
@@ -1176,7 +1215,9 @@ def write_csv(rows: list[dict[str, object]], out_path: Path) -> None:
             for field in ROW_FIELDS:
                 value = row.get(field)
                 if value is None:
-                    serialized[field] = ""
+                    # Keep tri-state evidence distinguishable from an absent
+                    # field in CSV as well as JSON.
+                    serialized[field] = "null"
                 elif isinstance(value, bool):
                     serialized[field] = "true" if value else "false"
                 else:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
 import shutil
 import subprocess
@@ -9,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -40,6 +42,31 @@ FILE_CHANGING_TOOLS = {
 }
 
 _STOP = object()
+
+
+@dataclass(frozen=True)
+class BenchmarkPythonEnvironment:
+    configured_path: str
+    realpath: str | None
+    version: str | None
+    prefix: str | None
+    base_prefix: str | None
+    valid: bool
+    errors: tuple[str, ...] = ()
+
+    def metadata(self) -> dict[str, Any]:
+        return {
+            "benchmark_python": self.configured_path,
+            "benchmark_python_realpath": self.realpath,
+            "benchmark_python_version": self.version,
+            "benchmark_python_prefix": self.prefix,
+            "benchmark_python_base_prefix": self.base_prefix,
+            "evaluation_environment_valid": self.valid,
+            "evaluation_environment_errors": list(self.errors),
+        }
+
+    def __getitem__(self, key: str) -> Any:
+        return self.metadata()[key]
 
 
 def _read_text(path: Path) -> str | None:
@@ -108,26 +135,89 @@ def _snapshot_repo(repo_root: Path) -> tuple[Path, Path]:
     return temp_root, snapshot_root
 
 
-def _run_command(command: list[str], *, cwd: Path, output_path: Path) -> int:
-    proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
+def resolve_benchmark_python(
+    benchmark_python: str | Path | None = None,
+    *,
+    environ: dict[str, str] | None = None,
+) -> Path:
+    environment = os.environ if environ is None else environ
+    configured = benchmark_python or environment.get("BENCHMARK_PYTHON")
+    if configured is None:
+        default = PROJECT_ROOT / ".venv" / "bin" / "python"
+        configured = default if default.exists() else sys.executable
+    selected = Path(configured).expanduser()
+    if not selected.is_absolute():
+        selected = PROJECT_ROOT / selected
+    return selected.absolute()
+
+
+def validate_benchmark_python(benchmark_python: str | Path) -> BenchmarkPythonEnvironment:
+    selected = resolve_benchmark_python(benchmark_python)
+    errors: list[str] = []
+    version = None
+    prefix = None
+    base_prefix = None
+    realpath = os.path.realpath(str(selected)) if selected.exists() else None
+    if not selected.is_file():
+        errors.append(f"benchmark Python is missing: {selected}")
+    elif not os.access(selected, os.X_OK):
+        errors.append(f"benchmark Python is not executable: {selected}")
+    else:
+        try:
+            version_proc = subprocess.run([str(selected), "--version"], capture_output=True, text=True, check=False)
+            version = (version_proc.stdout or version_proc.stderr).strip() or None
+            if version_proc.returncode != 0:
+                errors.append(f"benchmark Python --version failed with exit {version_proc.returncode}")
+            import_proc = subprocess.run(
+                [str(selected), "-c", "import benchmark_harness; import pytest; import sys; print(sys.prefix); print(sys.base_prefix)"],
+                capture_output=True, text=True, check=False,
+            )
+            if import_proc.returncode != 0:
+                detail = (import_proc.stderr or import_proc.stdout).strip()
+                errors.append(f"benchmark Python cannot import harness and pytest: {detail or f'exit {import_proc.returncode}'}")
+            else:
+                lines = import_proc.stdout.splitlines()
+                prefix = lines[0].strip() if lines else None
+                base_prefix = lines[1].strip() if len(lines) > 1 else None
+        except OSError as exc:
+            errors.append(f"benchmark Python cannot launch: {exc}")
+    return BenchmarkPythonEnvironment(
+        configured_path=str(selected), realpath=realpath, version=version,
+        prefix=prefix, base_prefix=base_prefix, valid=not errors, errors=tuple(errors),
+    )
+
+
+def _evaluation_env(benchmark_python: Path) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["BENCHMARK_PYTHON"] = str(benchmark_python)
+    environment["PATH"] = f"{benchmark_python.parent}{os.pathsep}{environment.get('PATH', '')}"
+    return environment
+
+
+def _run_command(
+    command: list[str], *, cwd: Path, output_path: Path, env: dict[str, str] | None = None
+) -> int:
+    proc = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, check=False)
     _write_text(output_path, f"{proc.stdout or ''}{proc.stderr or ''}")
     return proc.returncode
 
 
-def _default_verify_runner(snapshot_root: Path, output_path: Path) -> int:
-    return _run_command(["bash", "./VERIFY.sh"], cwd=snapshot_root, output_path=output_path)
+def _default_verify_runner(snapshot_root: Path, output_path: Path, benchmark_python: Path) -> int:
+    return _run_command(
+        ["bash", "./VERIFY.sh"], cwd=snapshot_root, output_path=output_path, env=_evaluation_env(benchmark_python)
+    )
 
 
-def _default_hidden_runner(hidden_evaluator_module: str) -> Callable[[Path, Path], int]:
+def _default_hidden_runner(hidden_evaluator_module: str, benchmark_python: Path) -> Callable[[Path, Path], int]:
     def _runner(snapshot_root: Path, output_path: Path) -> int:
         command = [
-            sys.executable,
+            str(benchmark_python),
             "-m",
             hidden_evaluator_module,
             "--repo",
             str(snapshot_root),
         ]
-        return _run_command(command, cwd=PROJECT_ROOT, output_path=output_path)
+        return _run_command(command, cwd=PROJECT_ROOT, output_path=output_path, env=_evaluation_env(benchmark_python))
 
     return _runner
 
@@ -173,13 +263,20 @@ def _checkpoint_record(
     turn: int,
     assistant_message_id: str | None,
     wall_seconds: float,
-    verify_exit: int,
-    hidden_exit: int,
+    verify_exit: int | None,
+    hidden_exit: int | None,
     functional_green: bool,
     bench_ready_green: bool,
     permission_denials_delta: int,
     checkpoint_eval_errors: list[str],
     provider_item_index: int | None = None,
+    benchmark_python: str | None = None,
+    benchmark_python_realpath: str | None = None,
+    benchmark_python_version: str | None = None,
+    benchmark_python_prefix: str | None = None,
+    benchmark_python_base_prefix: str | None = None,
+    evaluation_environment_valid: bool | None = None,
+    evaluation_environment_errors: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
         "run_id": run_id,
@@ -198,6 +295,13 @@ def _checkpoint_record(
         "bench_ready_green": bench_ready_green,
         "permission_denials_delta": max(permission_denials_delta, 0),
         "checkpoint_eval_errors": checkpoint_eval_errors,
+        "benchmark_python": benchmark_python,
+        "benchmark_python_realpath": benchmark_python_realpath,
+        "benchmark_python_version": benchmark_python_version,
+        "benchmark_python_prefix": benchmark_python_prefix,
+        "benchmark_python_base_prefix": benchmark_python_base_prefix,
+        "evaluation_environment_valid": evaluation_environment_valid,
+        "evaluation_environment_errors": evaluation_environment_errors or [],
     }
 
 
@@ -219,14 +323,36 @@ def evaluate_checkpoint_snapshot(
     provider_item_index: int | None = None,
     verify_runner: Callable[[Path, Path], int] | None = None,
     hidden_runner: Callable[[Path, Path], int] | None = None,
+    benchmark_python: str | Path | None = None,
+    environment: BenchmarkPythonEnvironment | None = None,
 ) -> dict[str, Any]:
     checkpoint_root = run_dir / "solution_latency_checkpoints" / f"checkpoint_{checkpoint_index:04d}"
     checkpoint_root.mkdir(parents=True, exist_ok=True)
 
     temp_root, snapshot_root = _snapshot_repo(repo_root)
-    verify_runner = verify_runner or _default_verify_runner
-    hidden_runner = hidden_runner or _default_hidden_runner(hidden_evaluator_module)
+    selected_python = resolve_benchmark_python(benchmark_python) if environment is None else Path(environment.configured_path)
+    environment = environment or validate_benchmark_python(selected_python)
+    environment_metadata = environment.metadata()
+    verify_runner = verify_runner or (lambda snapshot, output: _default_verify_runner(snapshot, output, selected_python))
+    hidden_runner = hidden_runner or _default_hidden_runner(hidden_evaluator_module, selected_python)
     checkpoint_eval_errors: list[str] = []
+
+    if not environment.valid:
+        checkpoint_eval_errors.extend(
+            f"evaluation_environment: {error}" for error in environment_metadata["evaluation_environment_errors"]
+        )
+        record = _checkpoint_record(
+            run_id=run_id, task_slug=task_slug, arm_slug=arm_slug, phase=phase, source=source,
+            checkpoint_index=checkpoint_index, turn=turn, assistant_message_id=assistant_message_id,
+            wall_seconds=wall_seconds, provider_item_index=provider_item_index, verify_exit=None,
+            hidden_exit=None, functional_green=False, bench_ready_green=False,
+            permission_denials_delta=permission_denials_delta, checkpoint_eval_errors=checkpoint_eval_errors,
+            **environment_metadata,
+        )
+        _append_jsonl(run_dir / "turn_events.jsonl", record)
+        _write_json(checkpoint_root / "checkpoint.json", record)
+        shutil.rmtree(temp_root, ignore_errors=True)
+        return record
 
     try:
         verify_exit = verify_runner(snapshot_root, checkpoint_root / "verification.txt")
@@ -264,6 +390,7 @@ def evaluate_checkpoint_snapshot(
         bench_ready_green=bench_ready_green,
         permission_denials_delta=permission_denials_delta,
         checkpoint_eval_errors=checkpoint_eval_errors,
+        **environment_metadata,
     )
 
     _append_jsonl(run_dir / "turn_events.jsonl", record)
@@ -359,6 +486,8 @@ def _checkpoint_current_turn(
     hidden_evaluator_module: str,
     start_time: float,
     permission_denials_delta: int,
+    benchmark_python: Path | None = None,
+    environment: BenchmarkPythonEnvironment | None = None,
 ) -> dict[str, Any]:
     wall_seconds = round(time.monotonic() - start_time, 3)
     try:
@@ -376,6 +505,8 @@ def _checkpoint_current_turn(
             hidden_evaluator_module=hidden_evaluator_module,
             wall_seconds=wall_seconds,
             permission_denials_delta=permission_denials_delta,
+            benchmark_python=benchmark_python,
+            environment=environment,
         )
     except Exception as exc:  # pragma: no cover - defensive guard
         checkpoint_root = run_dir / "solution_latency_checkpoints" / f"checkpoint_{checkpoint_index:04d}"
@@ -420,6 +551,8 @@ def _run_stream_json_observer(
     permission_mode: str,
     plugin_dir: str | None,
     hidden_evaluator_module: str,
+    benchmark_python: Path | None = None,
+    environment: BenchmarkPythonEnvironment | None = None,
 ) -> int:
     stdout_path = run_dir / "claude_stdout.txt"
     stderr_path = run_dir / "claude_stderr.txt"
@@ -531,6 +664,8 @@ def _run_stream_json_observer(
             hidden_evaluator_module=hidden_evaluator_module,
             start_time=start_time,
             permission_denials_delta=max(permission_denials_total - last_checkpoint_permission_denials_total, 0),
+            benchmark_python=benchmark_python,
+            environment=environment,
         )
         last_checkpoint_permission_denials_total = permission_denials_total
         turn_checkpoint_counts[str(current_turn)] = turn_checkpoint_counts.get(str(current_turn), 0) + 1
@@ -556,6 +691,13 @@ def _run_stream_json_observer(
             bench_ready_green=record["bench_ready_green"],
             permission_denials_delta=record["permission_denials_delta"],
             checkpoint_eval_errors=record["checkpoint_eval_errors"],
+            benchmark_python=record.get("benchmark_python"),
+            benchmark_python_realpath=record.get("benchmark_python_realpath"),
+            benchmark_python_version=record.get("benchmark_python_version"),
+            benchmark_python_prefix=record.get("benchmark_python_prefix"),
+            benchmark_python_base_prefix=record.get("benchmark_python_base_prefix"),
+            evaluation_environment_valid=record.get("evaluation_environment_valid"),
+            evaluation_environment_errors=record.get("evaluation_environment_errors"),
             notes=[trigger],
         )
         _write_text(
@@ -751,6 +893,8 @@ def _run_mtime_polling_observer(
     permission_mode: str,
     plugin_dir: str | None,
     hidden_evaluator_module: str,
+    benchmark_python: Path | None = None,
+    environment: BenchmarkPythonEnvironment | None = None,
 ) -> int:
     stdout_path = run_dir / "claude_stdout.txt"
     stderr_path = run_dir / "claude_stderr.txt"
@@ -850,6 +994,8 @@ def _run_mtime_polling_observer(
             hidden_evaluator_module=hidden_evaluator_module,
             start_time=start_time,
             permission_denials_delta=max(permission_denials_total - last_checkpoint_permission_denials_total, 0),
+            benchmark_python=benchmark_python,
+            environment=environment,
         )
         trace_recorder.record_checkpoint(
             checkpoint_index=checkpoint_index,
@@ -863,6 +1009,13 @@ def _run_mtime_polling_observer(
             bench_ready_green=record["bench_ready_green"],
             permission_denials_delta=record["permission_denials_delta"],
             checkpoint_eval_errors=record["checkpoint_eval_errors"],
+            benchmark_python=record.get("benchmark_python"),
+            benchmark_python_realpath=record.get("benchmark_python_realpath"),
+            benchmark_python_version=record.get("benchmark_python_version"),
+            benchmark_python_prefix=record.get("benchmark_python_prefix"),
+            benchmark_python_base_prefix=record.get("benchmark_python_base_prefix"),
+            evaluation_environment_valid=record.get("evaluation_environment_valid"),
+            evaluation_environment_errors=record.get("evaluation_environment_errors"),
             notes=["mtime polling checkpoint"],
         )
         trace_recorder.record_turn_completed(
@@ -914,10 +1067,18 @@ def run(
     plugin_dir: str | None,
     hidden_evaluator_module: str,
     mode: str,
+    benchmark_python: str | Path | None = None,
 ) -> int:
     prompt_text = prompt_file.read_text(encoding="utf-8")
     run_dir.mkdir(parents=True, exist_ok=True)
-
+    selected_python = resolve_benchmark_python(benchmark_python)
+    environment = validate_benchmark_python(selected_python)
+    if not environment.valid:
+        _write_text(
+            run_dir / "solution_latency_observer_error.txt",
+            "evaluation environment invalid; agent was not started\n" + "\n".join(environment.errors) + "\n",
+        )
+        return 2
     try:
         if mode == STREAM_JSON_MODE:
             return _run_stream_json_observer(
@@ -935,6 +1096,8 @@ def run(
                 permission_mode=permission_mode,
                 plugin_dir=plugin_dir,
                 hidden_evaluator_module=hidden_evaluator_module,
+                benchmark_python=selected_python,
+                environment=environment,
             )
         if mode == MTIME_POLLING_MODE:
             return _run_mtime_polling_observer(
@@ -952,6 +1115,8 @@ def run(
                 permission_mode=permission_mode,
                 plugin_dir=plugin_dir,
                 hidden_evaluator_module=hidden_evaluator_module,
+                benchmark_python=selected_python,
+                environment=environment,
             )
         raise ValueError(f"unknown observation mode: {mode}")
     except Exception as exc:  # pragma: no cover - best-effort error handling
@@ -977,6 +1142,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plugin-dir", default=None)
     parser.add_argument("--hidden-evaluator-module", required=True)
     parser.add_argument("--mode", required=True, choices=[STREAM_JSON_MODE, MTIME_POLLING_MODE])
+    parser.add_argument("--benchmark-python", default=None)
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -996,6 +1162,7 @@ def main(argv: list[str] | None = None) -> int:
             plugin_dir=args.plugin_dir,
             hidden_evaluator_module=args.hidden_evaluator_module,
             mode=args.mode,
+            benchmark_python=args.benchmark_python,
         )
     raise AssertionError(f"unhandled command: {args.command}")
 

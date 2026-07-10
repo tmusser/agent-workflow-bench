@@ -13,6 +13,7 @@ from benchmark_harness.agent_turn_trace import (
     TRACE_SOURCE_CODEX_JSONL,
     parse_json_records,
     process_codex_record,
+    _summarize_rows,
 )
 
 
@@ -23,6 +24,21 @@ def _write(path: Path, text: str) -> None:
 
 def _load_jsonl(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def test_checkpoint_environment_validity_is_tristate_and_partial_is_invalid() -> None:
+    base = {"event_kind": "checkpoint", "functional_green": True, "bench_ready_green": True}
+    def summarize(values: list[object]) -> object:
+        rows = [{**base, **({"evaluation_environment_valid": value} if value != "missing" else {})} for value in values]
+        return _summarize_rows(rows, run_id="run", phase="initial", provider="claude", runner="test",
+                                trace_source=TRACE_SOURCE_CLAUDE_STREAM_JSON,
+                                trace_fidelity=TRACE_FIDELITY_TURN_EVENT, repo_root=None, arm_slug="A-baseline")["evaluation_environment_valid"]
+
+    assert summarize([]) is None
+    assert summarize([True, True]) is True
+    assert summarize([True, False]) is False
+    assert summarize([True, "missing"]) is False
+    assert summarize([None]) is False
 
 
 def _run_codex_trace(
@@ -113,6 +129,7 @@ def test_claude_turn_trace_writes_safe_metadata_and_summary(tmp_path: Path):
         hidden_evaluator_exit=0,
         functional_green=True,
         bench_ready_green=True,
+        evaluation_environment_valid=True,
         permission_denials_delta=2,
         checkpoint_eval_errors=[],
     )
