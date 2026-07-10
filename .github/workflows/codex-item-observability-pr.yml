@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   apply-and-validate:
@@ -28,11 +29,30 @@ jobs:
         run: python .github/scripts/apply_codex_item_observability.py
 
       - name: Run focused observability tests
-        run: >-
-          python -m pytest
-          benchmark_harness/tests/test_agent_turn_trace.py
-          benchmark_harness/tests/test_scorecard.py
-          -q
+        run: |
+          set +e
+          python -m pytest \
+            benchmark_harness/tests/test_agent_turn_trace.py \
+            benchmark_harness/tests/test_scorecard.py \
+            -q --tb=short > /tmp/focused-tests.log 2>&1
+          code=$?
+          cat /tmp/focused-tests.log
+          exit "$code"
+
+      - name: Report focused-test failure
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo 'Focused observability tests failed:'
+            echo
+            echo '```text'
+            tail -120 /tmp/focused-tests.log
+            echo '```'
+          } > /tmp/failure-comment.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/failure-comment.md
 
       - name: Run full harness tests
         run: python -m pytest benchmark_harness/tests -q
