@@ -6,9 +6,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+from benchmark_harness.evidence_status import infer_command_exit
 from benchmark_harness.validate_skill_runtime_proof import validate as validate_skill_runtime_proof
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ARTIFACT_NAMES = [
     "SPEC.md",
     "PLAN.md",
@@ -146,19 +146,22 @@ def _extract_changed_files(diff_patch_path: Path) -> list[str]:
 
 
 def _workflow_artifacts_present(workspace_root: Path) -> list[str]:
-    present = []
-    for name in WORKFLOW_ARTIFACT_NAMES:
-        if (workspace_root / name).exists():
-            present.append(name)
-    return present
+    return [name for name in WORKFLOW_ARTIFACT_NAMES if (workspace_root / name).exists()]
 
 
-def _proof_state(workspace_root: Path) -> tuple[bool, bool, list[str]]:
+def _proof_state(
+    workspace_root: Path,
+    *,
+    expected_agent_cli: str | None = None,
+) -> tuple[bool, bool, list[str]]:
     proof_path = workspace_root / "SKILL_RUNTIME_PROOF.md"
     if not proof_path.exists() or not proof_path.is_file():
         return False, False, ["missing SKILL_RUNTIME_PROOF.md"]
     try:
-        issues = validate_skill_runtime_proof(proof_path)
+        issues = validate_skill_runtime_proof(
+            proof_path,
+            expected_agent_cli=expected_agent_cli,
+        )
     except Exception as exc:  # pragma: no cover - defensive guard
         return True, False, [f"{exc.__class__.__name__}: {exc}"]
     return True, not issues, issues
@@ -175,9 +178,7 @@ def _skill_context_state(workspace_root: Path) -> tuple[bool, bool, list[str]]:
 
 def _prompt_requires_proof(prompt_file: Path) -> bool:
     text = _read_text(prompt_file)
-    if not text:
-        return False
-    return any(marker in text for marker in PROMPT_PROOF_MARKERS)
+    return bool(text and any(marker in text for marker in PROMPT_PROOF_MARKERS))
 
 
 def _initial_not_ready_state(run_dir: Path) -> dict[str, object]:
@@ -187,55 +188,14 @@ def _initial_not_ready_state(run_dir: Path) -> dict[str, object]:
         return {"present": False, "skill_runtime_proof": None}
 
     proof_state = None
-    match = re.search(r"^skill_runtime_proof\s*=\s*(\w+)\s*$", text, flags=re.MULTILINE | re.IGNORECASE)
+    match = re.search(
+        r"^skill_runtime_proof\s*=\s*(\w+)\s*$",
+        text,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
     if match:
         proof_state = match.group(1).strip().lower()
-    return {
-        "present": True,
-        "skill_runtime_proof": proof_state,
-    }
-
-
-def _infer_exit_code(path_candidates: list[Path], kind: str) -> int | str | None:
-    texts: list[str] = []
-    for path in path_candidates:
-        text = _read_text(path)
-        if text is None:
-            continue
-        lowered = text.lower()
-        if kind == "verify":
-            if re.search(r"\b(?:verification|verify)(?:_|-|\s)*exit(?:_|-|\s)*(?:code)?\s*[:=]\s*0\b", lowered):
-                return 0
-            if re.search(r"\b(?:verification|verify)(?:_|-|\s)*exit(?:_|-|\s)*(?:code)?\s*[:=]\s*1\b", lowered):
-                return 1
-            if "passed in" in lowered or "verification passed" in lowered or "no impossible churn detected" in lowered:
-                return 0
-            if "failed" in lowered or "assertionerror" in lowered or "traceback (most recent call last)" in lowered:
-                return 1
-        else:
-            if re.search(r"\bhidden(?:_|-|\s)*evaluator(?:_|-|\s)*exit(?:_|-|\s)*(?:code)?\s*[:=]\s*0\b", lowered):
-                return 0
-            if re.search(r"\bhidden(?:_|-|\s)*evaluator(?:_|-|\s)*exit(?:_|-|\s)*(?:code)?\s*[:=]\s*1\b", lowered):
-                return 1
-            if "hidden task 4 evaluator passed" in lowered or "no hidden contract failed" in lowered or "evaluator passed" in lowered:
-                return 0
-            if "hidden contract failed" in lowered or "failed" in lowered or "traceback (most recent call last)" in lowered:
-                return 1
-        texts.append(text)
-
-    for text in texts:
-        lowered = text.lower()
-        if kind == "verify":
-            if "passed in" in lowered or "verification passed" in lowered:
-                return 0
-            if "failed" in lowered or "assertionerror" in lowered:
-                return 1
-        else:
-            if "hidden task 4 evaluator passed" in lowered or "evaluator passed" in lowered:
-                return 0
-            if "hidden contract failed" in lowered or "failed" in lowered:
-                return 1
-    return None
+    return {"present": True, "skill_runtime_proof": proof_state}
 
 
 def _detect_markers(texts: list[str], markers: list[str]) -> bool:
@@ -244,34 +204,32 @@ def _detect_markers(texts: list[str], markers: list[str]) -> bool:
 
 
 def _load_output_texts(run_dir: Path) -> list[str]:
-    texts = []
-    for name in ("codex_stdout.txt", "codex_stderr.txt", "verification_final.txt", "verification.txt", "hidden_evaluator_final.txt", "hidden_evaluator.txt", "INITIAL_NOT_READY.txt"):
-        text = _read_text(run_dir / name)
-        if text is not None:
-            texts.append(text)
-    return texts
+    names = (
+        "codex_stdout.txt",
+        "codex_stderr.txt",
+        "verification_final.txt",
+        "verification.txt",
+        "hidden_evaluator_final.txt",
+        "hidden_evaluator.txt",
+        "INITIAL_NOT_READY.txt",
+    )
+    return [text for name in names if (text := _read_text(run_dir / name)) is not None]
 
 
 def _build_public_status(classification: str, *, task_attempted: bool) -> str:
-    if classification == "completed_with_required_artifacts":
-        return "passed"
-    if classification == "missing_skill_runtime_proof":
-        return "failed: missing proof after task attempt"
-    if classification == "functional_failure":
-        return "failed: functional"
-    if classification == "artifact_contract_failure":
-        return "failed: artifact contract"
-    if classification == "harness_failure":
-        return "failed: harness"
-    if classification == "environment_blocked_before_attempt":
-        return "blocked: environment before task attempt"
-    if classification == "usage_limit_blocked_before_attempt":
-        return "blocked: usage limit before task attempt"
-    if classification == "agent_stopped_before_attempt":
-        return "blocked: agent stopped before task attempt"
+    mapping = {
+        "completed_with_required_artifacts": "passed",
+        "missing_skill_runtime_proof": "failed: missing proof after task attempt",
+        "functional_failure": "failed: functional",
+        "artifact_contract_failure": "failed: artifact contract",
+        "harness_failure": "failed: harness",
+        "environment_blocked_before_attempt": "blocked: environment before task attempt",
+        "usage_limit_blocked_before_attempt": "blocked: usage limit before task attempt",
+        "agent_stopped_before_attempt": "blocked: agent stopped before task attempt",
+    }
     if classification == "skill_context_failure":
         return "blocked: skill context before task attempt" if not task_attempted else "failed: skill context"
-    return "unknown"
+    return mapping.get(classification, "unknown")
 
 
 def _build_failure_category(classification: str) -> str | None:
@@ -279,16 +237,14 @@ def _build_failure_category(classification: str) -> str | None:
         return None
     if classification in {"missing_skill_runtime_proof", "artifact_contract_failure"}:
         return "artifact_contract_failure"
-    if classification in {"functional_failure"}:
+    if classification == "functional_failure":
         return "functional_failure"
-    if classification in {"skill_context_failure"}:
+    if classification == "skill_context_failure":
         return "skill_context_failure"
     if classification in {"environment_blocked_before_attempt", "usage_limit_blocked_before_attempt"}:
         return "environment_failure"
     if classification == "harness_failure":
         return "harness_gate_failure"
-    if classification == "agent_stopped_before_attempt":
-        return "unknown"
     return "unknown"
 
 
@@ -302,12 +258,14 @@ def _classify_recovery(
     proof_present: bool,
     proof_valid: bool,
     functional_green: bool,
+    functional_known: bool,
     task_attempted: bool,
     usage_limit_blocked: bool,
     environment_blocked: bool,
     agent_stopped: bool,
     reached_max_turns: bool | str,
 ) -> str:
+    del reached_max_turns
     if not task_attempted and usage_limit_blocked:
         return "usage_limit_blocked_before_attempt"
     if not task_attempted and environment_blocked:
@@ -318,11 +276,23 @@ def _classify_recovery(
         return "agent_stopped_before_attempt"
     if proof_required and not prompt_explicit:
         return "harness_failure"
-    if proof_required and proof_present:
-        return "completed_with_required_artifacts" if proof_valid and functional_green else "artifact_contract_failure"
+    if not functional_known:
+        return "harness_failure"
+    if not functional_green:
+        return "functional_failure"
     if proof_required and not proof_present:
-        return "missing_skill_runtime_proof" if functional_green else "functional_failure"
-    return "completed_with_required_artifacts" if functional_green else "functional_failure"
+        return "missing_skill_runtime_proof"
+    if proof_required and not proof_valid:
+        return "artifact_contract_failure"
+    return "completed_with_required_artifacts"
+
+
+def _artifact_status(*, proof_required: bool, proof_present: bool, proof_valid: bool) -> str:
+    if not proof_required:
+        return "not_required"
+    if not proof_present:
+        return "missing"
+    return "passed" if proof_valid else "invalid"
 
 
 def _render_markdown(recovery: dict[str, Any]) -> str:
@@ -344,6 +314,8 @@ def _render_markdown(recovery: dict[str, Any]) -> str:
         f"- Skill context valid: {'yes' if recovery['skill_runtime_context_valid'] else 'no'}",
         f"- Skill proof present: {'yes' if recovery['skill_runtime_proof_present'] else 'no'}",
         f"- Skill proof valid: {'yes' if recovery['skill_runtime_proof_valid'] else 'no'}",
+        f"- Functional status: {recovery['functional_status']}",
+        f"- Artifact status: {recovery['artifact_status']}",
         f"- Functional green: {'yes' if recovery['functional_green'] else 'no'}",
         f"- Task attempted: {'yes' if recovery['task_attempted'] else 'no'}",
         f"- Changed files: {', '.join(recovery['changed_files']) if recovery['changed_files'] else 'none'}",
@@ -386,6 +358,7 @@ def build_skill_runtime_recovery(
     prompt_file = prompt_file.resolve()
     run_metrics = _read_json(run_dir / "run_metrics.json") or {}
     run_provenance = _read_json(run_dir / "run_provenance.json") or {}
+    expected_agent_cli = str(run_metrics.get("runner") or run_metrics.get("provider") or "").strip() or None
 
     verification_file = run_dir / ("verification_final.txt" if phase == "initial" else "verification.txt")
     hidden_evaluator_file = run_dir / ("hidden_evaluator_final.txt" if phase == "initial" else "hidden_evaluator.txt")
@@ -396,47 +369,35 @@ def build_skill_runtime_recovery(
     skill_context_file = workspace_root / ".benchmark" / "SKILL_RUNTIME_CONTEXT.md"
     skill_context_present, skill_context_valid, skill_context_issues = _skill_context_state(workspace_root)
     skill_runtime_proof_file = workspace_root / "SKILL_RUNTIME_PROOF.md"
-    proof_present, proof_valid, proof_issues = _proof_state(workspace_root)
+    proof_present, proof_valid, proof_issues = _proof_state(workspace_root, expected_agent_cli=expected_agent_cli)
     workflow_artifacts = _workflow_artifacts_present(workspace_root)
     changed_files = _extract_changed_files(diff_patch)
     initial_not_ready = _initial_not_ready_state(run_dir)
-    stdout_text = _read_text(run_dir / "codex_stdout.txt") or ""
-    stderr_text = _read_text(run_dir / "codex_stderr.txt") or ""
-    output_texts = [text for text in (stdout_text, stderr_text) if text]
-    output_texts.extend(_load_output_texts(run_dir))
+    output_texts = _load_output_texts(run_dir)
 
-    verify_exit = _infer_exit_code([verification_file, run_dir / "verification.txt", run_dir / "verification_final.txt"], "verify")
-    hidden_exit = _infer_exit_code(
-        [hidden_evaluator_file, run_dir / "hidden_evaluator.txt", run_dir / "hidden_evaluator_final.txt"],
-        "hidden",
-    )
-    functional_green = verify_exit == 0 and hidden_exit == 0
+    verify_exit = infer_command_exit([verification_file, run_dir / "verification.txt", run_dir / "verification_final.txt"], "verify")
+    hidden_exit = infer_command_exit([hidden_evaluator_file, run_dir / "hidden_evaluator.txt", run_dir / "hidden_evaluator_final.txt"], "hidden")
+    functional_known = verify_exit in {0, 1} and hidden_exit in {0, 1}
+    functional_green = functional_known and verify_exit == 0 and hidden_exit == 0
+    functional_status = "passed" if functional_green else "failed" if functional_known else "unknown"
+
     actual_turns = _safe_int(run_metrics.get("actual_turns")) or _safe_int(run_metrics.get("num_turns"))
     codex_exit_code = _safe_int(run_metrics.get("runner_exit_code"))
     if codex_exit_code is None:
         codex_exit_code = _safe_int(run_metrics.get("agent_exit_code"))
     if codex_exit_code is None:
-        codex_exit_file = _safe_int(_read_text(run_dir / "codex_exit_code.txt"))
-        codex_exit_code = codex_exit_file
+        codex_exit_code = _safe_int(_read_text(run_dir / "codex_exit_code.txt"))
+
     reached_max_turns = run_metrics.get("reached_max_turns", "unknown")
     if isinstance(reached_max_turns, str):
-        reached_max_turns = reached_max_turns.strip().lower() == "true" if reached_max_turns.strip().lower() in {"true", "false"} else reached_max_turns
+        normalized = reached_max_turns.strip().lower()
+        if normalized in {"true", "false"}:
+            reached_max_turns = normalized == "true"
 
-    usage_limit_blocked = bool(
-        reached_max_turns is True
-        or _detect_markers(output_texts, USAGE_LIMIT_MARKERS)
-        or (initial_not_ready.get("skill_runtime_proof") == "missing" and not changed_files and not proof_present)
-    )
-    environment_blocked = bool(_detect_markers(output_texts, ENVIRONMENT_MARKERS))
-    agent_stopped = bool(_detect_markers(output_texts, AGENT_STOP_MARKERS))
-
-    task_attempted = bool(
-        changed_files
-        or workflow_artifacts
-        or proof_present
-        or (actual_turns is not None and actual_turns > 0)
-        or _file_size(diff_patch) > 0
-    )
+    task_attempted = bool(changed_files or workflow_artifacts or proof_present or (actual_turns is not None and actual_turns > 0) or _file_size(diff_patch) > 0)
+    usage_limit_blocked = bool(reached_max_turns is True or _detect_markers(output_texts, USAGE_LIMIT_MARKERS) or (initial_not_ready.get("skill_runtime_proof") == "missing" and not changed_files and not proof_present))
+    environment_blocked = _detect_markers(output_texts, ENVIRONMENT_MARKERS)
+    agent_stopped = _detect_markers(output_texts, AGENT_STOP_MARKERS)
 
     skill_runtime_required = arm_requires_skill_runtime(arm_slug)
     proof_required = skill_runtime_required
@@ -449,12 +410,14 @@ def build_skill_runtime_recovery(
         proof_present=proof_present,
         proof_valid=proof_valid,
         functional_green=functional_green,
+        functional_known=functional_known,
         task_attempted=task_attempted,
         usage_limit_blocked=usage_limit_blocked,
         environment_blocked=environment_blocked,
         agent_stopped=agent_stopped,
         reached_max_turns=reached_max_turns,
     )
+    artifact_status = _artifact_status(proof_required=proof_required, proof_present=proof_present, proof_valid=proof_valid)
     public_status = _build_public_status(classification, task_attempted=task_attempted)
     failure_category = _build_failure_category(classification)
     stop_after_initial = public_status.startswith("blocked:")
@@ -476,14 +439,18 @@ def build_skill_runtime_recovery(
 
     failure_reason = public_status
     if classification == "functional_failure":
-        reason = _read_text(run_dir / "hidden_evaluator_final.txt") or _read_text(run_dir / "hidden_evaluator.txt")
+        reason = _read_text(hidden_evaluator_file)
         if reason:
             failure_reason = reason.strip().splitlines()[0]
+    elif classification == "artifact_contract_failure" and proof_issues:
+        failure_reason = proof_issues[0]
+    elif classification == "harness_failure" and not functional_known:
+        failure_reason = "verification or hidden evaluator status could not be determined"
     elif classification == "completed_with_required_artifacts":
         failure_reason = "passed"
 
-    recovery = {
-        "schema_version": 1,
+    recovery: dict[str, Any] = {
+        "schema_version": 2,
         "run_id": run_id,
         "task_slug": task_slug,
         "arm_slug": arm_slug,
@@ -511,7 +478,11 @@ def build_skill_runtime_recovery(
         "diff_stat_bytes": _file_size(diff_stat),
         "verification_exit": verify_exit,
         "hidden_evaluator_exit": hidden_exit,
+        "functional_known": functional_known,
         "functional_green": functional_green,
+        "functional_status": functional_status,
+        "artifact_status": artifact_status,
+        "expected_agent_cli": expected_agent_cli,
         "task_attempted": task_attempted,
         "initial_not_ready_present": bool(initial_not_ready.get("present")),
         "initial_not_ready_skill_runtime_proof": initial_not_ready.get("skill_runtime_proof"),

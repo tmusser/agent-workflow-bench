@@ -75,11 +75,23 @@ def _is_placeholder(value: str | None) -> bool:
     return normalized in PLACEHOLDER_VALUES or normalized.startswith("to be filled")
 
 
+def _agent_family(value: str | None) -> str | None:
+    normalized = (value or "").strip().lower()
+    if not normalized:
+        return None
+    if "codex" in normalized:
+        return "codex"
+    if "claude" in normalized:
+        return "claude"
+    return re.sub(r"[^a-z0-9]+", "-", normalized).strip("-") or None
+
+
 def validate(
     path: Path,
     *,
     allow_template: bool = False,
     allow_runtime_hook: bool = False,
+    expected_agent_cli: str | None = None,
 ) -> list[str]:
     text = path.read_text(encoding="utf-8")
     issues = [f"missing marker: {marker}" for marker in REQUIRED_MARKERS if marker not in text]
@@ -109,6 +121,24 @@ def validate(
             "Invocation evidence level must be one of: availability_only, artifact_inferred, agent_declared, runtime_hook"
         )
 
+    expected_family = _agent_family(expected_agent_cli)
+    actual_agent_cli = _field_value(text, "Agent CLI")
+    actual_family = _agent_family(actual_agent_cli)
+    if expected_family and actual_family != expected_family:
+        issues.append(
+            f"Agent CLI {actual_agent_cli or 'missing'} does not match expected runner family {expected_family}"
+        )
+
+    environment = (_field_value(text, "Environment variables relevant to skill loading") or "").lower()
+    activation = (_field_value(text, "Activation mechanism") or "").lower()
+    if expected_family == "codex":
+        if "claude_plugin_dir" in environment:
+            issues.append("Codex proof must not claim CLAUDE_PLUGIN_DIR as its skill-loading environment")
+        if "namespaced skill invocation" in activation:
+            issues.append(
+                "Codex proof must not claim namespaced skill invocation without provider-native runtime support"
+            )
+
     return issues
 
 
@@ -121,6 +151,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Allow Invocation evidence level: runtime_hook for repositories with real runtime-hook evidence.",
     )
     parser.add_argument(
+        "--expected-agent-cli",
+        help="Validate that Agent CLI and loading claims match the actual runner family.",
+    )
+    parser.add_argument(
         "--allow-template",
         action="store_true",
         help="Only validate required markers; use for the blank template, not real run proofs.",
@@ -130,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.path),
         allow_template=args.allow_template,
         allow_runtime_hook=args.allow_runtime_hook,
+        expected_agent_cli=args.expected_agent_cli,
     )
     if issues:
         for issue in issues:
