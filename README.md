@@ -257,3 +257,20 @@ The scorecard accepts both `*-eval-bundle.tar.gz` and `*-initial-fail-bundle.tar
 - Continue publishing scorecards and bundles as generated artifacts, not source.
 - Improve launch hygiene so the source tree stays easy to inspect and reuse.
 - PyPI publishing is deferred until the repo exposes a stable CLI and package-data story.
+
+## Codex C vs E Pilot Takeaways
+
+[Full Codex C vs E pilot artifact](docs/codex-c-vs-e-final.md)
+
+Benchmarked CLI model: `CODEX_MODEL=gpt-5.4-mini`
+
+Overall reading: this Codex-only pilot is useful evidence about workflow artifacts, verification discipline, and resumability under matched runner settings. It is not proof that skills broadly outperform no-skill Codex.
+
+| Dimension | What the Codex C vs E pilot shows | What it does not show |
+| --- | --- | --- |
+| Functional correctness | Tasks 1-4 were functional green across C and E; Tasks 6-7 had public/hidden pass evidence with recovery caveats. | It does not establish broad coding-agent superiority. |
+| Hidden contracts | Task 5 failed hidden trust checks in both arms and was preserved as a real failure. | It does not imply either arm is generally robust to all hidden evaluators. |
+| Resume behavior | Tasks 1-4 passed full and stripped resume in both arms. Tasks 6-7 exposed recovery-classification gaps. | It does not show universal resumability. |
+| Audit trail quality | E produced proof/workflow artifacts on attempted E rows, and Tasks 1-4 E rebuilt stripped artifacts through the finalizer path. | Artifact presence alone did not make Tasks 5-7 bench-ready. |
+| Skill proof | E proof was valid on initial rows where produced; Tasks 1-4 stripped proof was rebuilt. | It does not prove skill runtime hooks guarantee correctness. |
+| Overall reading | Codex C vs E under this local pilot is suggestive evidence about audit and resumability behavior. | It is not proof that skills broadly outperform no-skill Codex. |
