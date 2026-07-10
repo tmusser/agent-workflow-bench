@@ -7,6 +7,8 @@ The goal is runner compatibility, not a new benchmark result. Do not claim Codex
 ## What is supported
 
 - `tools/pilot_codex_smoke.sh` prepares the same task workspaces as the existing smoke helper.
+
+Checkpoint verification uses `BENCHMARK_PYTHON` (defaulting to the project `.venv/bin/python`); the configured path is preserved for hidden evaluators and is placed first on `PATH` for `VERIFY.sh`. Its real path and interpreter prefixes are telemetry only, so venv package discovery still occurs through the venv path. Validation runs once per initial/full-resume/stripped-resume phase and requires both the harness package and `pytest`; failures stop before Codex starts and are classified separately from agent failures. `help` and `setup` work before the venv exists; `doctor` reports the missing interpreter and setup remediation.
 - It runs a configurable Codex CLI command in the initial, full-resume, and stripped-resume workspaces.
 - It writes metadata-only `run_metrics.json` through `benchmark_harness.runner_metrics`.
 - It writes existing `run_provenance.json` records before each Codex run.

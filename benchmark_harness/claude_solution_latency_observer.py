@@ -227,8 +227,11 @@ def evaluate_captures(
     arm_slug: str,
     phase: str,
     hidden_evaluator_module: str,
+    benchmark_python: Path | None = None,
+    environment: shared.BenchmarkPythonEnvironment | None = None,
 ) -> float:
     started = time.monotonic()
+    benchmark_python = benchmark_python or shared.resolve_benchmark_python()
     for capture in captures:
         try:
             record = shared.evaluate_checkpoint_snapshot(
@@ -245,6 +248,8 @@ def evaluate_captures(
                 hidden_evaluator_module=hidden_evaluator_module,
                 wall_seconds=capture.wall_seconds,
                 permission_denials_delta=capture.permission_denials_delta,
+                benchmark_python=benchmark_python,
+                environment=environment,
             )
             recorder.record_checkpoint(
                 checkpoint_index=capture.checkpoint_index,
@@ -258,6 +263,13 @@ def evaluate_captures(
                 bench_ready_green=record["bench_ready_green"],
                 permission_denials_delta=record["permission_denials_delta"],
                 checkpoint_eval_errors=record["checkpoint_eval_errors"],
+                benchmark_python=record["benchmark_python"],
+                benchmark_python_realpath=record.get("benchmark_python_realpath"),
+                benchmark_python_version=record["benchmark_python_version"],
+                benchmark_python_prefix=record.get("benchmark_python_prefix"),
+                benchmark_python_base_prefix=record.get("benchmark_python_base_prefix"),
+                evaluation_environment_valid=record["evaluation_environment_valid"],
+                evaluation_environment_errors=record["evaluation_environment_errors"],
                 notes=[capture.trigger, "evaluated after Claude exited"],
             )
             _write_text(
@@ -287,6 +299,8 @@ def _finish_observation(
     current_turn: int,
     distinct_states_skipped: int,
     complete_boundary_stream: bool,
+    benchmark_python: Path,
+    environment: shared.BenchmarkPythonEnvironment,
 ) -> int:
     process_wall_seconds = round((process_end_ns - process_start_ns) / 1_000_000_000, 6)
     evaluator_seconds = evaluate_captures(
@@ -298,6 +312,8 @@ def _finish_observation(
         arm_slug=arm_slug,
         phase=phase,
         hidden_evaluator_module=hidden_evaluator_module,
+        benchmark_python=benchmark_python,
+        environment=environment,
     )
     exit_code = proc.returncode or 0
     recorder.record_run_result(
@@ -317,6 +333,8 @@ def _finish_observation(
         item.process_group_paused for item in live_captures
     )
     coverage_complete = (
+        summary.get("evaluation_environment_valid", True) is True
+        and
         bool(live_captures)
         and complete_boundary_stream
         and distinct_states_skipped == 0
@@ -328,6 +346,7 @@ def _finish_observation(
             "stable_snapshot_coverage_complete": stable_snapshots,
             "checkpoint_evaluation_deferred": True,
             "checkpoint_boundary_resolution": boundary_resolution,
+            "benchmark_python": str(benchmark_python),
             "native_observation_unit": "assistant_turn_and_file_changing_tool_result"
             if source == STREAM_JSON_MODE
             else "sampled_workspace_state",
@@ -359,6 +378,10 @@ def _finish_observation(
             "checkpoint_coverage_complete": coverage_complete,
             "stable_snapshot_coverage_complete": stable_snapshots,
             "checkpoint_boundary_resolution": boundary_resolution,
+            "benchmark_python": str(benchmark_python),
+            "benchmark_python_version": summary.get("benchmark_python_version"),
+            "evaluation_environment_valid": summary.get("evaluation_environment_valid"),
+            "evaluation_environment_errors": summary.get("evaluation_environment_errors", []),
         },
     )
     _write_text(run_dir / "claude_exit_code.txt", f"{exit_code}\n")
@@ -416,6 +439,8 @@ def _run_stream_json_observer(
     plugin_dir: str | None,
     hidden_evaluator_module: str,
     max_checkpoints: int,
+    benchmark_python: Path,
+    environment: shared.BenchmarkPythonEnvironment,
 ) -> int:
     stdout_path = run_dir / "claude_stdout.txt"
     stderr_path = run_dir / "claude_stderr.txt"
@@ -683,6 +708,8 @@ def _run_stream_json_observer(
         current_turn=current_turn,
         distinct_states_skipped=distinct_states_skipped,
         complete_boundary_stream=not unresolved_file_change_tool_uses,
+        benchmark_python=benchmark_python,
+        environment=environment,
     )
 
 
@@ -712,6 +739,8 @@ def _run_mtime_polling_observer(
     plugin_dir: str | None,
     hidden_evaluator_module: str,
     max_checkpoints: int,
+    benchmark_python: Path,
+    environment: shared.BenchmarkPythonEnvironment,
 ) -> int:
     stdout_path = run_dir / "claude_stdout.txt"
     stderr_path = run_dir / "claude_stderr.txt"
@@ -851,6 +880,8 @@ def _run_mtime_polling_observer(
         current_turn=len(captures),
         distinct_states_skipped=distinct_states_skipped,
         complete_boundary_stream=False,
+        benchmark_python=benchmark_python,
+        environment=environment,
     )
 
 
@@ -872,9 +903,18 @@ def run(
     hidden_evaluator_module: str,
     mode: str,
     max_checkpoints: int,
+    benchmark_python: str | Path | None = None,
 ) -> int:
     prompt_text = prompt_file.read_text(encoding="utf-8")
     run_dir.mkdir(parents=True, exist_ok=True)
+    selected_python = shared.resolve_benchmark_python(benchmark_python)
+    environment = shared.validate_benchmark_python(selected_python)
+    if not environment.valid:
+        _write_text(
+            run_dir / "solution_latency_observer_error.txt",
+            "evaluation environment invalid; agent was not started\n" + "\n".join(environment.errors) + "\n",
+        )
+        return 2
     try:
         if mode == STREAM_JSON_MODE:
             return _run_stream_json_observer(
@@ -893,6 +933,8 @@ def run(
                 plugin_dir=plugin_dir,
                 hidden_evaluator_module=hidden_evaluator_module,
                 max_checkpoints=max_checkpoints,
+                benchmark_python=selected_python,
+                environment=environment,
             )
         if mode == MTIME_POLLING_MODE:
             return _run_mtime_polling_observer(
@@ -911,6 +953,8 @@ def run(
                 plugin_dir=plugin_dir,
                 hidden_evaluator_module=hidden_evaluator_module,
                 max_checkpoints=max_checkpoints,
+                benchmark_python=selected_python,
+                environment=environment,
             )
         raise ValueError(f"unknown observation mode: {mode}")
     except Exception as exc:  # pragma: no cover - best-effort error handling
@@ -937,6 +981,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hidden-evaluator-module", required=True)
     parser.add_argument("--mode", required=True, choices=[STREAM_JSON_MODE, MTIME_POLLING_MODE])
     parser.add_argument("--max-checkpoints", type=int, default=32)
+    parser.add_argument("--benchmark-python", default=None)
     args = parser.parse_args(argv)
     if args.max_checkpoints < 1:
         parser.error("--max-checkpoints must be at least 1")
@@ -957,6 +1002,7 @@ def main(argv: list[str] | None = None) -> int:
         hidden_evaluator_module=args.hidden_evaluator_module,
         mode=args.mode,
         max_checkpoints=args.max_checkpoints,
+        benchmark_python=args.benchmark_python,
     )
 
 

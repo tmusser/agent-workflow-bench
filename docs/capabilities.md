@@ -53,6 +53,10 @@ The common coverage fields are:
 
 Claims about the first evaluator-green **observed boundary** require `checkpoint_coverage_complete=true`; neither provider path claims an instruction-level instant.
 
+Checkpoint evaluation preserves the configured absolute executable path (selected by `--benchmark-python`, then `BENCHMARK_PYTHON`); it does not dereference a venv symlink for execution. The dereferenced target, version, prefix, and base prefix are safe telemetry only. Smoke-runner `help` and `setup` remain usable before `.venv` exists, while `doctor` reports remediation and benchmark runs stop before an agent starts when the interpreter or required `benchmark_harness`/`pytest` imports are invalid. The environment is validated once per phase and invalid-environment evidence remains separate from agent functional failure.
+
+Environment validity is tri-state: `true` means every checkpoint explicitly validated the environment, `false` means invalid or partially described checkpoint metadata, and `null` means historical checkpoints contain no environment metadata. Old bundles are not upgraded to environment-attested first-green claims; regenerated historical claims should be described as environment-unattested.
+
 ## Claude semantics
 
 ### Stream-JSON mode
