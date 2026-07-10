@@ -1,207 +1,74 @@
-# Solution Latency
+# Solution latency
 
-Semantic terminal state answers whether the final workspace was correct
-against a raw terminal shape such as `max_turns`. Solution latency asks a
-sharper question:
+Solution latency records when a run first becomes functionally green and when it first becomes bench-ready green. It is intended to separate useful work from post-solution churn without pretending that every provider exposes equivalent turn-level telemetry.
 
-> On which turn did the run first become public + hidden green?
+## Core fields
 
-That requires per-turn evidence. The harness now records checkpoint rows when
-the Claude print-mode helper can observe the run via `stream-json`; otherwise
-it falls back to a conservative `mtime_polling` trace. Older bundles may still
-have only final-state evidence, and those remain unobservable.
+- `first_functional_green_turn`: first observed turn whose public verifier and hidden evaluator both pass.
+- `first_bench_ready_green_turn`: first observed turn that also satisfies the arm-specific artifact contract.
+- `turns_after_first_functional_green`: observed turns after functional success.
+- `turns_after_first_bench_ready_green`: observed turns after bench-ready success.
+- `functional_to_bench_ready_turns`: the gap between functional and bench-ready success when available.
+- `solution_latency_observable`: whether the evidence supports first-green timing claims.
+- `solution_latency_source`: the observation mechanism.
+- `solution_latency_note`: the applicable claim boundary.
 
-The normalized trace artifacts are:
+These fields should be interpreted together. A final green workspace does not imply that the first-green turn was observed.
 
-- `agent_turn_trace.jsonl`
-- `agent_turn_trace_summary.json`
+## Observation modes
 
-Those files are provider-neutral, metadata-only, and safe to bundle. They do not
-contain prompt bodies, stdout/stderr bodies, source contents, or full provider
-event payloads.
+### Claude stream JSON
 
-Trace fidelity levels are:
+When Claude emits usable stream JSON, the observer records assistant boundaries and tool metadata. After a turn that changed files completes, it snapshots the repository and runs the public and hidden evaluators against the snapshot.
 
-- `turn_event`: the provider stream exposed assistant/tool events.
-- `checkpoint_only`: the harness observed file changes and checkpoint snapshots, but not exact turn boundaries.
-- `run_level_only`: only final provider result metadata was available.
+This supports turn-level first-green observation when checkpoints were successfully captured.
 
-`mtime_polling` is best-effort. It only sees tracked-file timestamp changes, so
-short runs or edits that touch only untracked files can be missed. When that
-happens, keep `solution_latency_observable` false and do not infer first-green
-post-hoc.
+### Claude modification-time polling
 
-For separately measured E-arm audit cost and proof-attribution guidance, see
-[docs/finalizer-attribution.md](docs/finalizer-attribution.md).
+When stream JSON is unavailable, the observer polls relevant tracked files. A changed signature creates a checkpoint and evaluator snapshot.
 
-## Scorecard Fields
+This is checkpoint-level rather than conversational-turn evidence. The synthetic checkpoint index must not be presented as a native provider turn.
 
-For each phase, the scorecard includes:
+### Final-only provider output
 
-- `<phase>_actual_turns`
-- `<phase>_first_green_turn`
-- `<phase>_first_functional_green_turn`
-- `<phase>_first_functional_green_wall_seconds`
-- `<phase>_first_bench_ready_green_turn`
-- `<phase>_first_bench_ready_green_wall_seconds`
-- `<phase>_turns_after_first_green`
-- `<phase>_turns_after_first_functional_green`
-- `<phase>_turns_after_first_bench_ready_green`
-- `<phase>_permission_denials_after_first_green`
-- `<phase>_solution_latency_observable`
-- `<phase>_solution_latency_source`
-- `<phase>_solution_latency_note`
+When no intermediate events or checkpoints are available, only the final result is observable. Keep first-green fields empty and use:
 
-Phases use these prefixes:
+- `solution_latency_observable=false`
+- `solution_latency_source=final_only_no_per_turn_trace`
 
-- `initial`
-- `full_resume`
-- `stripped_resume`
+Do not infer first-green timing from the final pass.
 
-The bundle-level scorecard also surfaces:
+## Checkpoint behavior
 
-- `solution_latency_observable`
-- `solution_latency_source`
+Each checkpoint:
 
-## Emitted Artifact
+1. copies the current workspace to an isolated temporary directory;
+2. runs `VERIFY.sh` against the copy;
+3. runs the task-specific hidden evaluator against the copy;
+4. evaluates the arm-specific bench-ready contract;
+5. writes safe metadata and evaluator output beneath `solution_latency_checkpoints/`;
+6. removes the temporary copy.
 
-The pilot wrapper now runs a best-effort post-processing step:
+The evaluator runs against the copy so it cannot mutate the agent's live workspace.
 
-```bash
-python -m benchmark_harness.emit_solution_latency annotate \
-  --root "$ROOT_DIR" \
-  --run-id "$RUN_ID"
+Checkpoint errors are evidence gaps. They are written to `checkpoint_eval_errors` and must not be silently converted into task failures.
+
+## Functional versus bench-ready green
+
+Functional green means:
+
+```text
+VERIFY.sh exit == 0
+AND hidden evaluator exit == 0
 ```
 
-For each collected phase, this writes `solution_latency.json` into that phase's
-run directory before the eval bundle is rebuilt.
+Bench-ready green additionally applies the arm-specific contract.
 
-When checkpoint traces are present, `solution_latency.json` contains the first
-functional and bench-ready green checkpoints:
-
-```json
-{
-  "actual_turns": 21,
-  "final_green": true,
-  "final_hidden_exit": 0,
-  "final_verify_exit": 0,
-  "first_functional_green_turn": 7,
-  "first_bench_ready_green_turn": 9,
-  "note": "observed_from_per_turn_trace",
-  "phase": "initial",
-  "solution_latency_observable": true,
-  "source": "stream_json",
-  "turns_after_first_functional_green": 14,
-  "turns_after_first_bench_ready_green": 12
-}
-```
-
-For final-only runs without per-turn traces, the artifact records known final
-state while keeping first-green latency unobservable:
-
-```json
-{
-  "actual_turns": 21,
-  "final_green": true,
-  "final_hidden_exit": 0,
-  "final_verify_exit": 0,
-  "first_green_turn": null,
-  "note": "final_only_no_per_turn_trace",
-  "phase": "initial",
-  "solution_latency_observable": false,
-  "source": "final_only_no_per_turn_trace",
-  "turns_after_first_green": null
-}
-```
-
-This is intentionally different from omitting the field. It says: the harness
-looked for latency evidence and only had final-state evidence.
-
-## Current Bundle Behavior
-
-For bundles without per-turn traces:
-
-- `actual_turns` can be read from `run_metrics.json` when present.
-- `first_green_turn` remains empty.
-- `first_functional_green_turn` remains empty.
-- `first_bench_ready_green_turn` remains empty.
-- `turns_after_first_green` remains empty.
-- `turns_after_first_functional_green` remains empty.
-- `turns_after_first_bench_ready_green` remains empty.
-- `solution_latency_observable` is `false`.
-- `solution_latency_source` is `final_only_no_per_turn_trace` for emitted
-  summaries.
-- `solution_latency_note` is either `not_observable` for older bundles or
-  `final_only_no_per_turn_trace` for bundles with emitted summaries.
-
-This is intentional. It preserves the difference between:
-
-- **known**: the final workspace is green;
-- **unknown**: the exact turn where it first became green.
-
-## Observable Bundle Inputs
-
-The scorecard can compute first-green turn when a run directory includes one of
-these optional files.
-
-### `agent_turn_trace_summary.json`
-
-This is the preferred normalized trace artifact. It can provide:
-
-- `trace_fidelity`
-- `turns_observed`
-- `file_changing_tool_uses_observed`
-- `checkpoints_observed`
-- `first_functional_green_turn`
-- `first_bench_ready_green_turn`
-- `solution_latency_observable`
-- `solution_latency_source`
-- `solution_latency_note`
-
-### `solution_latency.json`
-
-```json
-{
-  "actual_turns": 21,
-  "first_green_turn": 7,
-  "first_functional_green_turn": 7,
-  "first_functional_green_wall_seconds": 12.5,
-  "first_bench_ready_green_turn": 9,
-  "first_bench_ready_green_wall_seconds": 19.2,
-  "turns_after_first_green": 14,
-  "turns_after_first_functional_green": 14,
-  "turns_after_first_bench_ready_green": 12,
-  "permission_denials_after_first_green": 3,
-  "solution_latency_observable": true,
-  "solution_latency_source": "stream_json",
-  "note": "computed_by_harness"
-}
-```
-
-Only `first_green_turn` is required for an observable summary. When
-`actual_turns` is present in `run_metrics.json`, `turns_after_first_green` can be
-derived.
-
-### `turn_events.jsonl` or `solution_timeline.jsonl`
-
-Each line is a JSON object. The first event with public + hidden green status is
-the first-green turn.
-
-```jsonl
-{"turn": 1, "verify_exit": 1, "hidden_evaluator_exit": 1, "functional_green": false, "bench_ready_green": false}
-{"turn": 7, "verify_exit": 0, "hidden_evaluator_exit": 0, "functional_green": true, "bench_ready_green": false}
-{"turn": 9, "verify_exit": 0, "hidden_evaluator_exit": 0, "functional_green": true, "bench_ready_green": true}
-```
-
-The scorecard recognizes `verify_exit` / `verification_exit` and `hidden_exit` /
-`hidden_evaluator_exit`. It also accepts boolean green markers such as
-`functional_green`, `bench_ready_green`, `green`, or `public_hidden_green`.
-
-For arm-specific bench-ready rules:
+For the current arms:
 
 - `A-baseline`: bench-ready equals functional green.
-- `E-ai-engineering-skills`: bench-ready requires functional green plus
-  `VERIFY.md` and a valid `SKILL_RUNTIME_PROOF.md`.
+- `B-*` and `C-*`: bench-ready equals functional green unless a task-specific contract says otherwise.
+- `E-ai-engineering-skills`: bench-ready requires functional green plus `VERIFY.md` and a valid `SKILL_RUNTIME_PROOF.md`.
 
 ## Codex item timeline
 
@@ -229,8 +96,8 @@ and reports:
 - `first_bench_ready_green_item` and `items_after_first_bench_ready_green`;
 - `functional_to_bench_ready_items`, which separates useful artifact completion from the
   broader post-functional tail;
-- `checkpoint_coverage_complete`, which must be true before claiming the first green
-  item was observed exactly.
+- `checkpoint_coverage_complete`, which must be true before identifying the first
+  evaluator-green captured provider item.
 
 Snapshot evaluation happens after Codex exits so hidden checks do not steer the agent or
 consume its context. The runner briefly pauses the Codex process group only while copying
@@ -251,5 +118,6 @@ Use the two tails separately and treat incomplete checkpoint coverage as non-con
 Use solution latency as a waste and stopping-behavior metric only when
 `solution_latency_observable` is `true`.
 
-If it is `false`, do not say the agent solved the task on a particular turn. Say
-only that the final workspace was green and the first-green turn was not captured.
+If it is `false`, do not say the agent solved the task on a particular turn or provider
+item. Say only that the final workspace was green and the first-green point was not
+captured.
