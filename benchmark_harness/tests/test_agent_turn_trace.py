@@ -357,3 +357,65 @@ def test_skill_evidence_levels_cover_trace_artifact_and_context(tmp_path: Path):
 
     assert context_summary["skill_trace_evidence_level"] == "availability_only"
     assert context_summary["skill_runtime_context_present"] is True
+
+def test_codex_item_timeline_captures_commands_edits_and_audit_tail(tmp_path: Path):
+    secret_command = "python -m pytest tests/test_secret.py"
+    secret_source_path = "/private/work/repo/src/app.py"
+    secret_proof_path = "/private/work/repo/SKILL_RUNTIME_PROOF.md"
+    text = "\n".join(
+        [
+            json.dumps({"type": "turn.started"}),
+            json.dumps({"type": "item.started", "item": {"id": "cmd-1", "type": "command_execution", "command": "sed -n '1,120p' TASK.md", "status": "in_progress"}}),
+            json.dumps({"type": "item.completed", "item": {"id": "cmd-1", "type": "command_execution", "command": "sed -n '1,120p' TASK.md", "status": "completed", "exit_code": 0}}),
+            json.dumps({"type": "item.started", "item": {"id": "edit-1", "type": "file_change", "changes": [{"path": secret_source_path, "kind": "update"}], "status": "in_progress"}}),
+            json.dumps({"type": "item.completed", "item": {"id": "edit-1", "type": "file_change", "changes": [{"path": secret_source_path, "kind": "update"}], "status": "completed"}}),
+            json.dumps({"type": "item.started", "item": {"id": "cmd-2", "type": "command_execution", "command": secret_command, "status": "in_progress"}}),
+            json.dumps({"type": "item.completed", "item": {"id": "cmd-2", "type": "command_execution", "command": secret_command, "status": "completed", "exit_code": 0}}),
+            json.dumps({"type": "item.started", "item": {"id": "audit-1", "type": "file_change", "changes": [{"path": secret_proof_path, "kind": "add"}], "status": "in_progress"}}),
+            json.dumps({"type": "item.completed", "item": {"id": "audit-1", "type": "file_change", "changes": [{"path": secret_proof_path, "kind": "add"}], "status": "completed"}}),
+            json.dumps({"type": "turn.completed"}),
+        ]
+    )
+
+    summary, rows, serialized = _run_codex_trace(text, tmp_path=tmp_path)
+
+    assert summary["provider_item_timeline_observable"] is True
+    assert summary["provider_items_observed"] == 4
+    assert summary["command_execution_items_observed"] == 2
+    assert summary["file_change_items_observed"] == 2
+    assert summary["tool_uses_observed"] == 2
+    assert summary["file_changing_tool_uses_observed"] == 2
+    assert summary["command_category_counts"] == {"inspection": 1, "test": 1}
+    assert summary["file_change_category_counts"] == {"audit_artifact": 1, "source": 1}
+    assert summary["first_source_edit_item"] == 2
+    assert summary["first_test_command_item"] == 3
+    assert summary["first_audit_artifact_write_item"] == 4
+    assert summary["first_skill_proof_write_item"] == 4
+    assert summary["items_after_first_source_edit"] == 2
+    assert summary["items_after_first_test_command"] == 1
+    assert summary["items_after_first_audit_artifact_write"] == 0
+    assert secret_command not in serialized
+    assert secret_source_path not in serialized
+    assert secret_proof_path not in serialized
+    provider_rows = [row for row in rows if row["event_kind"] == "provider_item"]
+    assert provider_rows[0]["provider_item_index"] == 1
+    assert provider_rows[-1]["provider_item_index"] == 4
+
+
+def test_codex_completed_only_command_item_still_counts_as_tool_use(tmp_path: Path):
+    text = "\n".join(
+        [
+            json.dumps({"type": "turn.started"}),
+            json.dumps({"type": "item.completed", "item": {"id": "cmd-only", "type": "command_execution", "command": "./VERIFY.sh", "status": "completed", "exit_code": 0}}),
+            json.dumps({"type": "turn.completed"}),
+        ]
+    )
+
+    summary, rows, _ = _run_codex_trace(text, tmp_path=tmp_path)
+
+    assert summary["provider_items_observed"] == 1
+    assert summary["command_execution_items_observed"] == 1
+    assert summary["tool_uses_observed"] == 1
+    assert summary["first_verification_command_item"] == 1
+    assert [row["event_kind"] for row in rows].count("tool_use") == 1
+    assert [row["event_kind"] for row in rows].count("tool_result") == 1

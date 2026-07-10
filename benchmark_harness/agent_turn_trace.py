@@ -43,6 +43,36 @@ FILE_CHANGING_TOOLS = {
     "Write",
 }
 
+CODEX_AUDIT_ARTIFACTS = {
+    "BUGS.md",
+    "HANDOFF.md",
+    "PLAN.md",
+    "SKILL_RUNTIME_PROOF.md",
+    "SKILL_TRACE.jsonl",
+    "SPEC.md",
+    "VERIFY.md",
+}
+CODEX_PROOF_ARTIFACTS = {"SKILL_RUNTIME_PROOF.md", "SKILL_TRACE.jsonl"}
+CODEX_SOURCE_SUFFIXES = {
+    ".c",
+    ".cc",
+    ".cpp",
+    ".go",
+    ".java",
+    ".js",
+    ".jsx",
+    ".kt",
+    ".php",
+    ".py",
+    ".rb",
+    ".rs",
+    ".sh",
+    ".sql",
+    ".swift",
+    ".ts",
+    ".tsx",
+}
+
 FINAL_ONLY_NOTE = "final_only_no_per_turn_trace"
 OBSERVED_TRACE_NOTE = "observed_from_per_turn_trace"
 OBSERVED_MTIME_NOTE = "observed_from_mtime_polling"
@@ -210,6 +240,76 @@ def _extract_item_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
 def _codex_item_type(item: dict[str, Any]) -> str:
     item_type = _safe_str(item.get("type")) or _safe_str(item.get("item_type")) or _safe_str(item.get("kind"))
     return item_type.lower().replace(".", "_").replace("-", "_") if item_type else ""
+
+
+def _codex_item_status(item: dict[str, Any]) -> str | None:
+    value = _safe_str(item.get("status")) or _safe_str(item.get("state"))
+    return value.lower().replace(".", "_").replace("-", "_") if value else None
+
+
+def _codex_command_category(item: dict[str, Any]) -> str | None:
+    command = _safe_str(item.get("command"))
+    if command is None:
+        return None
+    lowered = command.lower()
+    if "validate_skill_runtime_proof" in lowered or "skill_runtime_proof.md" in lowered and "python" in lowered:
+        return "proof_validation"
+    if any(marker in lowered for marker in ("verify.sh", "hidden_evaluator", "benchmark_harness.evaluators")):
+        return "verification"
+    if any(
+        marker in lowered
+        for marker in (
+            "pytest",
+            "unittest",
+            "npm test",
+            "pnpm test",
+            "yarn test",
+            "cargo test",
+            "go test",
+            "ruff",
+            "mypy",
+            "markdownlint",
+        )
+    ):
+        return "test"
+    if any(marker in lowered for marker in ("git status", "git diff", "git log", "git show")):
+        return "git"
+    stripped = lowered.lstrip()
+    if stripped.startswith(("sed ", "cat ", "head ", "tail ", "rg ", "grep ", "find ", "ls ", "pwd")):
+        return "inspection"
+    if any(marker in lowered for marker in (" | sed ", " | cat ", " | head ", " | tail ", " | rg ", " | grep ")):
+        return "inspection"
+    return "other"
+
+
+def _codex_file_change_metadata(item: dict[str, Any]) -> tuple[list[str], list[str], int]:
+    changes = item.get("changes")
+    if not isinstance(changes, list):
+        return [], [], 0
+
+    categories: set[str] = set()
+    audit_artifacts: set[str] = set()
+    path_count = 0
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        raw_path = _safe_str(change.get("path"))
+        if raw_path is None:
+            continue
+        path_count += 1
+        normalized = raw_path.replace("\\", "/")
+        name = normalized.rsplit("/", 1)[-1]
+        lowered = normalized.lower()
+        if name in CODEX_AUDIT_ARTIFACTS:
+            categories.add("audit_artifact")
+            audit_artifacts.add(name)
+        elif "/tests/" in lowered or name.lower().startswith("test_") or name.lower().endswith("_test.py"):
+            categories.add("test")
+        elif Path(name).suffix.lower() in CODEX_SOURCE_SUFFIXES:
+            categories.add("source")
+        else:
+            categories.add("other")
+    return sorted(categories), sorted(audit_artifacts), path_count
 
 
 def _resolve_codex_turn_index(
@@ -421,6 +521,8 @@ class AgentTurnTraceRecorder:
     rows: list[dict[str, Any]] = field(default_factory=list)
     _tool_use_metadata: dict[str, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
     _file_change_observed_ids: set[str] = field(default_factory=set, init=False, repr=False)
+    _provider_item_indices: dict[str, int] = field(default_factory=dict, init=False, repr=False)
+    _provider_item_index: int = field(default=0, init=False, repr=False)
     _event_index: int = field(default=0, init=False, repr=False)
 
     def _promote_trace_fidelity(self, fidelity: str) -> None:
@@ -458,6 +560,46 @@ class AgentTurnTraceRecorder:
         if self.jsonl_path is not None:
             _append_jsonl(self.jsonl_path, row)
         return row
+
+    def has_tool_use_id(self, tool_use_id: str | None) -> bool:
+        return bool(tool_use_id and tool_use_id in self._tool_use_metadata)
+
+    def record_provider_item(
+        self,
+        *,
+        provider_event_type: str,
+        provider_item_type: str,
+        provider_item_lifecycle: str,
+        provider_item_status: str | None,
+        item_id: str | None,
+        turn_index: int | None,
+        wall_seconds: float | None,
+        command_category: str | None = None,
+        file_change_categories: list[str] | None = None,
+        audit_artifacts_changed: list[str] | None = None,
+        paths_changed_count: int = 0,
+        notes: list[str] | None = None,
+    ) -> dict[str, Any]:
+        item_key = item_id or f"anonymous:{provider_event_type}:{self._event_index + 1}"
+        if item_key not in self._provider_item_indices:
+            self._provider_item_index += 1
+            self._provider_item_indices[item_key] = self._provider_item_index
+        return self._emit_row(
+            "provider_item",
+            turn_index=turn_index,
+            provider_event_type=provider_event_type,
+            provider_item_index=self._provider_item_indices[item_key],
+            provider_item_type=provider_item_type,
+            provider_item_lifecycle=provider_item_lifecycle,
+            provider_item_status=provider_item_status,
+            tool_use_id=item_id,
+            command_category=command_category,
+            file_change_categories=file_change_categories or [],
+            audit_artifacts_changed=audit_artifacts_changed or [],
+            paths_changed_count=max(paths_changed_count, 0),
+            wall_seconds=wall_seconds,
+            notes=notes or [OBSERVED_NOTE],
+        )
 
     def record_turn_started(
         self,
@@ -709,6 +851,90 @@ class AgentTurnTraceRecorder:
         return self.build_summary()
 
 
+def _summarize_provider_items(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    item_rows = [row for row in rows if row.get("event_kind") == "provider_item"]
+    if not item_rows:
+        return {
+            "provider_item_timeline_observable": False,
+            "provider_items_observed": 0,
+            "command_execution_items_observed": 0,
+            "file_change_items_observed": 0,
+            "command_category_counts": {},
+            "file_change_category_counts": {},
+            "first_source_edit_item": None,
+            "first_test_command_item": None,
+            "first_verification_command_item": None,
+            "first_audit_artifact_write_item": None,
+            "first_skill_proof_write_item": None,
+            "items_after_first_source_edit": None,
+            "items_after_first_test_command": None,
+            "items_after_first_audit_artifact_write": None,
+            "provider_item_timeline_note": NOT_OBSERVABLE_NOTE,
+        }
+
+    unique_items: dict[int, dict[str, Any]] = {}
+    for row in item_rows:
+        item_index = _coerce_int(row.get("provider_item_index"))
+        if item_index is not None:
+            unique_items[item_index] = row
+    ordered = [unique_items[index] for index in sorted(unique_items)]
+
+    command_category_counts: dict[str, int] = {}
+    file_change_category_counts: dict[str, int] = {}
+    for row in ordered:
+        category = _safe_str(row.get("command_category"))
+        if category:
+            command_category_counts[category] = command_category_counts.get(category, 0) + 1
+        categories = row.get("file_change_categories")
+        if isinstance(categories, list):
+            for value in categories:
+                category_value = _safe_str(value)
+                if category_value:
+                    file_change_category_counts[category_value] = file_change_category_counts.get(category_value, 0) + 1
+
+    def first_item(predicate: Any) -> int | None:
+        for row in ordered:
+            if predicate(row):
+                return _coerce_int(row.get("provider_item_index"))
+        return None
+
+    first_source_edit = first_item(lambda row: "source" in (row.get("file_change_categories") or []))
+    first_test_command = first_item(lambda row: row.get("command_category") == "test")
+    first_verification_command = first_item(
+        lambda row: row.get("command_category") in {"verification", "proof_validation"}
+    )
+    first_audit_artifact = first_item(lambda row: "audit_artifact" in (row.get("file_change_categories") or []))
+    first_skill_proof = first_item(
+        lambda row: bool(CODEX_PROOF_ARTIFACTS.intersection(set(row.get("audit_artifacts_changed") or [])))
+    )
+    last_item = max(unique_items) if unique_items else None
+
+    def items_after(index: int | None) -> int | None:
+        if index is None or last_item is None:
+            return None
+        return max(last_item - index, 0)
+
+    return {
+        "provider_item_timeline_observable": True,
+        "provider_items_observed": len(ordered),
+        "command_execution_items_observed": sum(
+            1 for row in ordered if row.get("provider_item_type") == "command_execution"
+        ),
+        "file_change_items_observed": sum(1 for row in ordered if row.get("provider_item_type") == "file_change"),
+        "command_category_counts": dict(sorted(command_category_counts.items())),
+        "file_change_category_counts": dict(sorted(file_change_category_counts.items())),
+        "first_source_edit_item": first_source_edit,
+        "first_test_command_item": first_test_command,
+        "first_verification_command_item": first_verification_command,
+        "first_audit_artifact_write_item": first_audit_artifact,
+        "first_skill_proof_write_item": first_skill_proof,
+        "items_after_first_source_edit": items_after(first_source_edit),
+        "items_after_first_test_command": items_after(first_test_command),
+        "items_after_first_audit_artifact_write": items_after(first_audit_artifact),
+        "provider_item_timeline_note": "observed_from_codex_item_stream",
+    }
+
+
 def _summarize_rows(
     rows: list[dict[str, Any]],
     *,
@@ -729,6 +955,8 @@ def _summarize_rows(
     )
     checkpoints_observed = sum(1 for row in rows if row.get("event_kind") == "checkpoint")
     checkpoint_rows = [row for row in rows if row.get("event_kind") == "checkpoint"]
+    provider_item_summary = _summarize_provider_items(rows)
+    file_changing_tool_uses_observed += int(provider_item_summary.get("file_change_items_observed") or 0)
 
     first_functional_green_turn: int | None = None
     first_functional_green_wall_seconds: float | None = None
@@ -797,6 +1025,7 @@ def _summarize_rows(
         "solution_latency_note": solution_latency_note,
         "checkpoint_eval_errors": checkpoint_eval_errors,
         "raw_content_omitted": True,
+        **provider_item_summary,
         **skill_summary,
     }
 
@@ -892,6 +1121,71 @@ def process_codex_record(
     message_id = _extract_message_id(raw_record)
     wall_seconds = _extract_wall_seconds(raw_record)
     notes = ["normalized from codex jsonl/json", OBSERVED_NOTE]
+
+    if normalized_event_type in {"item_started", "item_completed", "item_updated"}:
+        item = _extract_item_payload(raw_record)
+        item_turn_index = turn_index if turn_index is not None else current_turn_index
+        if item is not None:
+            item_type = _codex_item_type(item)
+            item_id = _extract_tool_use_id(item)
+            lifecycle = normalized_event_type.removeprefix("item_")
+            command_category = _codex_command_category(item) if item_type == "command_execution" else None
+            file_categories, audit_artifacts, path_count = (
+                _codex_file_change_metadata(item) if item_type == "file_change" else ([], [], 0)
+            )
+            if item_type in {"agent_message", "command_execution", "file_change", "todo_list"}:
+                recorder.record_provider_item(
+                    provider_event_type=provider_event_type,
+                    provider_item_type=item_type,
+                    provider_item_lifecycle=lifecycle,
+                    provider_item_status=_codex_item_status(item),
+                    item_id=item_id,
+                    turn_index=item_turn_index,
+                    wall_seconds=wall_seconds,
+                    command_category=command_category,
+                    file_change_categories=file_categories,
+                    audit_artifacts_changed=audit_artifacts,
+                    paths_changed_count=path_count,
+                    notes=notes,
+                )
+
+            if item_type == "command_execution":
+                if lifecycle == "started" or not recorder.has_tool_use_id(item_id):
+                    recorder.record_tool_use(
+                        turn_index=item_turn_index,
+                        provider_event_type=provider_event_type,
+                        tool_use_id=item_id,
+                        tool_name="command_execution",
+                        message_id=message_id,
+                        wall_seconds=wall_seconds,
+                        file_changing_tool=False,
+                        notes=notes,
+                    )
+                if lifecycle == "completed":
+                    recorder.record_tool_result(
+                        turn_index=item_turn_index,
+                        provider_event_type=provider_event_type,
+                        tool_use_id=item_id,
+                        tool_name="command_execution",
+                        message_id=message_id,
+                        wall_seconds=wall_seconds,
+                        file_changing_tool=False,
+                        notes=notes,
+                    )
+                return item_turn_index
+
+            if item_type == "file_change":
+                if item_id not in recorder._file_change_observed_ids:
+                    recorder.record_file_change_observed(
+                        turn_index=item_turn_index,
+                        provider_event_type=provider_event_type,
+                        tool_use_id=item_id,
+                        tool_name="file_change",
+                        message_id=message_id,
+                        wall_seconds=wall_seconds,
+                        notes=["normalized from Codex file_change item", OBSERVED_NOTE],
+                    )
+                return item_turn_index
 
     if normalized_event_type in {"turn_started", "turn_start"}:
         turn_index = _resolve_codex_turn_index(

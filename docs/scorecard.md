@@ -84,3 +84,10 @@ Equivalent `full_...` and `stripped_...` fields are emitted for the resume phase
 
 A green row does not by itself prove broad skill superiority. It only says the run satisfied this bundle's checks and resume conditions.
 Context-pressure comparisons are safe for narrow degradation claims on the same task and harness settings, not for broad claims about general model quality.
+
+## Codex provider-item fields
+
+When `agent_turn_trace_summary.json` contains a Codex provider-item timeline, the
+scorecard surfaces item counts and milestones for each phase. These fields distinguish
+command and file-change activity inside a single Codex provider turn. They are workflow
+sequence metrics, not functional first-green claims.
