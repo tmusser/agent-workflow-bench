@@ -51,7 +51,7 @@ The common coverage fields are:
 - `checkpoint_snapshot_pause_seconds`
 - `checkpoint_evaluator_seconds`
 
-Exact first-green claims require `checkpoint_coverage_complete=true`.
+Claims about the first evaluator-green **observed boundary** require `checkpoint_coverage_complete=true`; neither provider path claims an instruction-level instant.
 
 ## Claude semantics
 
