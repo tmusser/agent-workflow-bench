@@ -96,4 +96,4 @@ print(json.dumps({{"type": "result", "num_turns": 1}}), flush=True)
     assert summary["first_functional_green_turn"] is None
 '''
 if "test_final_only_snapshot_does_not_claim_exact_stream_coverage" not in text:
-    path.write_text(text.rstrip() + addition + "\n", encoding="utf-8")
+    path.write_text(text.rstrip() + addition.rstrip() + "\n", encoding="utf-8")
