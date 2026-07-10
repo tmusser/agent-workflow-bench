@@ -220,10 +220,25 @@ It can report:
   artifact write, and first skill-proof write;
 - the number of later provider items after selected milestones.
 
-These fields sharpen ceremony and audit-tail analysis for Codex runs, but they do not
-make functional first-green observable. A first source edit or first test is not proof
-that the task was correct at that item. Continue to leave `first_functional_green_turn`
-and related fields empty unless evaluator checkpoints were actually observed.
+These fields sharpen ceremony and audit-tail analysis for Codex runs. With Codex
+workspace checkpoints enabled, the runner now captures every distinct workspace state
+at completed provider-item boundaries, evaluates those snapshots after the agent exits,
+and reports:
+
+- `first_functional_green_item` and `items_after_first_functional_green`;
+- `first_bench_ready_green_item` and `items_after_first_bench_ready_green`;
+- `functional_to_bench_ready_items`, which separates useful artifact completion from the
+  broader post-functional tail;
+- `checkpoint_coverage_complete`, which must be true before claiming the first green
+  item was observed exactly.
+
+Snapshot evaluation happens after Codex exits so hidden checks do not steer the agent or
+consume its context. The runner briefly pauses the Codex process group only while copying
+a stable workspace snapshot and records that pause separately from evaluator time.
+
+Do not call all work after functional green "waste" automatically. For E arms, work
+between functional green and bench-ready green may be required verification or proof.
+Use the two tails separately and treat incomplete checkpoint coverage as non-conclusive.
 
 ## Interpretation
 

@@ -37,6 +37,8 @@ CODEX_EXTRA_ARGS="${CODEX_EXTRA_ARGS:-}"
 CODEX_PROMPT_MODE="${CODEX_PROMPT_MODE:-arg}"
 CODEX_RUNNER="${CODEX_RUNNER:-codex-cli}"
 CODEX_PROVIDER="${CODEX_PROVIDER:-codex}"
+ENABLE_CODEX_SOLUTION_CHECKPOINTS="${ENABLE_CODEX_SOLUTION_CHECKPOINTS:-1}"
+CODEX_MAX_CHECKPOINTS="${CODEX_MAX_CHECKPOINTS:-32}"
 SKILL_PLUGIN_DIR="${SKILL_PLUGIN_DIR:-${CLAUDE_PLUGIN_DIR:-}}"
 
 telemetry_flag="$(printf '%s' "${ENABLE_TELEMETRY:-0}" | tr '[:upper:]' '[:lower:]')"
@@ -356,6 +358,13 @@ command_parts_include_json_flag() {
   return 1
 }
 
+codex_solution_checkpoints_enabled() {
+  local value
+  value="$(lowercase "$ENABLE_CODEX_SOLUTION_CHECKPOINTS")"
+  [[ "$value" == "1" || "$value" == "true" || "$value" == "yes" || "$value" == "on" ]] || return 1
+  command_parts_include_json_flag
+}
+
 warn_if_json_metrics_lack_json_stdout() {
   if [[ "$(lowercase "$CODEX_OUTPUT_FORMAT")" != "json" ]]; then
     return 0
@@ -398,12 +407,15 @@ run_codex_agent() {
   echo "  prompt mode: $CODEX_PROMPT_MODE"
   echo
 
-  local root_dir prompt_abs stdout_abs stderr_abs exit_abs
+  local root_dir prompt_abs stdout_abs stderr_abs exit_abs command_json_abs timing_abs observer_ran
   root_dir="$(pwd)"
   prompt_abs="${root_dir}/${prompt_file}"
   stdout_abs="${root_dir}/${out_dir}/codex_stdout.txt"
   stderr_abs="${root_dir}/${out_dir}/codex_stderr.txt"
   exit_abs="${root_dir}/${out_dir}/codex_exit_code.txt"
+  command_json_abs="${root_dir}/${out_dir}/codex_command.json"
+  timing_abs="${root_dir}/${out_dir}/codex_checkpoint_timing.json"
+  observer_ran=false
 
   write_provenance "$out_dir" "$label"
   build_codex_command
@@ -418,21 +430,44 @@ PY
 )"
 
   set +e
-  (
-    cd "$repo"
-    case "$CODEX_PROMPT_MODE" in
-      arg)
-        "${CODEX_COMMAND_PARTS[@]}" "$(cat "$prompt_abs")" > "$stdout_abs" 2> "$stderr_abs"
-        ;;
-      stdin)
-        "${CODEX_COMMAND_PARTS[@]}" < "$prompt_abs" > "$stdout_abs" 2> "$stderr_abs"
-        ;;
-      file)
-        "${CODEX_COMMAND_PARTS[@]}" "$prompt_abs" > "$stdout_abs" 2> "$stderr_abs"
-        ;;
-    esac
-  )
-  exit_code=$?
+  if codex_solution_checkpoints_enabled; then
+    python - "$command_json_abs" "${CODEX_COMMAND_PARTS[@]}" <<'PY'
+import json
+import pathlib
+import sys
+pathlib.Path(sys.argv[1]).write_text(json.dumps(sys.argv[2:]) + "\n", encoding="utf-8")
+PY
+    python -m benchmark_harness.codex_solution_latency_observer run \
+      --repo-root "$repo" \
+      --run-dir "${root_dir}/${out_dir}" \
+      --run-id "$RUN_ID" \
+      --task-slug "$TASK_SLUG" \
+      --arm-slug "$ARM_SLUG" \
+      --phase "$label" \
+      --prompt-file "$prompt_abs" \
+      --prompt-mode "$CODEX_PROMPT_MODE" \
+      --command-json "$command_json_abs" \
+      --hidden-evaluator-module "$HIDDEN_EVALUATOR_MODULE" \
+      --max-checkpoints "$CODEX_MAX_CHECKPOINTS"
+    exit_code=$?
+    observer_ran=true
+  else
+    (
+      cd "$repo"
+      case "$CODEX_PROMPT_MODE" in
+        arg)
+          "${CODEX_COMMAND_PARTS[@]}" "$(cat "$prompt_abs")" > "$stdout_abs" 2> "$stderr_abs"
+          ;;
+        stdin)
+          "${CODEX_COMMAND_PARTS[@]}" < "$prompt_abs" > "$stdout_abs" 2> "$stderr_abs"
+          ;;
+        file)
+          "${CODEX_COMMAND_PARTS[@]}" "$prompt_abs" > "$stdout_abs" 2> "$stderr_abs"
+          ;;
+      esac
+    )
+    exit_code=$?
+  fi
   set -e
 
   end_ns="$(python - <<'PY'
@@ -440,6 +475,17 @@ import time
 print(time.time_ns())
 PY
 )"
+  if [[ "$observer_ran" == "true" && -f "$timing_abs" ]]; then
+    read -r start_ns end_ns < <(python - "$timing_abs" <<'PY'
+import json
+import sys
+from pathlib import Path
+data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(data["process_start_ns"], data["process_end_ns"])
+PY
+)
+  fi
+  rm -f "$command_json_abs"
   echo "$exit_code" > "$exit_abs"
 
   python -m benchmark_harness.runner_metrics write \
@@ -461,7 +507,7 @@ PY
     --max-turns "$CODEX_MAX_TURNS" \
     --permission-mode "$CODEX_PERMISSION_MODE"
 
-  if ! python -m benchmark_harness.agent_turn_trace summarize-codex \
+  if [[ ! -f "${root_dir}/${out_dir}/agent_turn_trace_summary.json" ]] && ! python -m benchmark_harness.agent_turn_trace summarize-codex \
     --input "$stdout_abs" \
     --out-dir "${root_dir}/${out_dir}" \
     --run-id "$RUN_ID" \

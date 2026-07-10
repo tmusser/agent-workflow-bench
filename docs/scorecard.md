@@ -91,3 +91,10 @@ When `agent_turn_trace_summary.json` contains a Codex provider-item timeline, th
 scorecard surfaces item counts and milestones for each phase. These fields distinguish
 command and file-change activity inside a single Codex provider turn. They are workflow
 sequence metrics, not functional first-green claims.
+
+## Codex first-green item fields
+
+When JSONL checkpoint observation is enabled, phase-prefixed scorecard columns include
+`first_functional_green_item`, `first_bench_ready_green_item`, both post-green item tails,
+`functional_to_bench_ready_items`, and checkpoint coverage. Only interpret an exact first
+green item when the corresponding `checkpoint_coverage_complete` field is true.

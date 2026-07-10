@@ -99,6 +99,7 @@ def test_captured_workspace_states_report_exact_first_green_item(tmp_path: Path)
                 temp_root=temp_root,
                 snapshot_root=snapshot_root,
                 pause_seconds=0.01,
+                process_group_paused=True,
             )
         )
 
@@ -217,7 +218,7 @@ def test_normalized_checkpoint_artifacts_do_not_contain_snapshot_source(tmp_path
     snapshot_root = temp_root / "repo"
     secret = "PRIVATE_SOURCE_CONTENT"
     _write(snapshot_root / "state.txt", secret)
-    capture = CapturedWorkspace(1, 1, "file_change_completed", 1.0, "fp", temp_root, snapshot_root, 0.0)
+    capture = CapturedWorkspace(1, 1, "file_change_completed", 1.0, "fp", temp_root, snapshot_root, 0.0, True)
 
     def always_green(_: Path, output_path: Path) -> int:
         _write(output_path, "ok\n")

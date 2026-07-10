@@ -48,6 +48,7 @@ class CapturedWorkspace:
     temp_root: Path
     snapshot_root: Path
     pause_seconds: float
+    process_group_paused: bool
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -139,6 +140,7 @@ def capture_workspace(
         temp_root=temp_root,
         snapshot_root=snapshot_root,
         pause_seconds=pause_seconds,
+        process_group_paused=paused,
     )
     _write_json(
         run_dir / "solution_latency_checkpoints" / f"checkpoint_{checkpoint_index:04d}" / "capture.json",
@@ -383,6 +385,7 @@ def run(
                 temp_root=temp_root,
                 snapshot_root=snapshot_root,
                 pause_seconds=0.0,
+                process_group_paused=True,
             )
             captures.append(capture)
         else:
@@ -407,10 +410,14 @@ def run(
         notes=["Codex process completed before snapshot evaluation"],
     )
     summary = recorder.finalize()
-    coverage_complete = distinct_states_skipped == 0
+    stable_live_snapshots = all(
+        item.process_group_paused for item in captures if item.trigger != "final_workspace"
+    )
+    coverage_complete = distinct_states_skipped == 0 and stable_live_snapshots
     summary.update(
         {
             "checkpoint_coverage_complete": coverage_complete,
+            "stable_snapshot_coverage_complete": stable_live_snapshots,
             "workspace_states_observed": len(captures),
             "workspace_states_skipped": distinct_states_skipped,
             "checkpoint_snapshot_pause_seconds": round(sum(item.pause_seconds for item in captures), 6),
@@ -436,6 +443,7 @@ def run(
             "workspace_states_observed": len(captures),
             "workspace_states_skipped": distinct_states_skipped,
             "checkpoint_coverage_complete": coverage_complete,
+            "stable_snapshot_coverage_complete": stable_live_snapshots,
         },
     )
     _write_text(exit_path, f"{exit_code}\n")

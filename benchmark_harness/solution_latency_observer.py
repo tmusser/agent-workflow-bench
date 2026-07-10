@@ -179,6 +179,7 @@ def _checkpoint_record(
     bench_ready_green: bool,
     permission_denials_delta: int,
     checkpoint_eval_errors: list[str],
+    provider_item_index: int | None = None,
 ) -> dict[str, Any]:
     return {
         "run_id": run_id,
@@ -188,6 +189,7 @@ def _checkpoint_record(
         "source": source,
         "checkpoint_index": checkpoint_index,
         "turn": turn,
+        "provider_item_index": provider_item_index,
         "assistant_message_id": assistant_message_id,
         "wall_seconds": wall_seconds,
         "verify_exit": verify_exit,
@@ -214,6 +216,7 @@ def evaluate_checkpoint_snapshot(
     hidden_evaluator_module: str,
     wall_seconds: float,
     permission_denials_delta: int = 0,
+    provider_item_index: int | None = None,
     verify_runner: Callable[[Path, Path], int] | None = None,
     hidden_runner: Callable[[Path, Path], int] | None = None,
 ) -> dict[str, Any]:
@@ -254,6 +257,7 @@ def evaluate_checkpoint_snapshot(
         turn=turn,
         assistant_message_id=assistant_message_id,
         wall_seconds=wall_seconds,
+        provider_item_index=provider_item_index,
         verify_exit=verify_exit,
         hidden_exit=hidden_exit,
         functional_green=functional_green,

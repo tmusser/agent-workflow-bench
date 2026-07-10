@@ -759,12 +759,14 @@ class AgentTurnTraceRecorder:
         bench_ready_green: bool | None,
         permission_denials_delta: int | None = None,
         checkpoint_eval_errors: list[str] | None = None,
+        provider_item_index: int | None = None,
         notes: list[str] | None = None,
     ) -> dict[str, Any]:
         return self._emit_row(
             "checkpoint",
             checkpoint_index=checkpoint_index,
             turn_index=turn_index,
+            provider_item_index=provider_item_index,
             provider_event_type=provider_event_type,
             message_id=assistant_message_id,
             wall_seconds=wall_seconds,
@@ -962,10 +964,18 @@ def _summarize_rows(
     first_functional_green_wall_seconds: float | None = None
     first_bench_ready_green_turn: int | None = None
     first_bench_ready_green_wall_seconds: float | None = None
+    first_functional_green_item: int | None = None
+    first_bench_ready_green_item: int | None = None
     permission_denials_after_first_green = 0
     first_green_turn: int | None = None
 
     for row in checkpoint_rows:
+        provider_item_index = _coerce_int(row.get("provider_item_index"))
+        if provider_item_index is not None:
+            if row.get("functional_green") is True and first_functional_green_item is None:
+                first_functional_green_item = provider_item_index
+            if row.get("bench_ready_green") is True and first_bench_ready_green_item is None:
+                first_bench_ready_green_item = provider_item_index
         turn_index = _coerce_int(row.get("turn_index"))
         if turn_index is None:
             continue
@@ -988,11 +998,34 @@ def _summarize_rows(
         if first_bench_ready_green_turn is not None:
             turns_after_first_bench_ready_green = max(turns_observed[-1] - first_bench_ready_green_turn, 0)
 
-    solution_latency_observable = trace_fidelity != TRACE_FIDELITY_RUN_LEVEL_ONLY and (
-        first_functional_green_turn is not None or first_bench_ready_green_turn is not None
+    provider_items_observed = _coerce_int(provider_item_summary.get("provider_items_observed")) or 0
+    items_after_first_functional_green = (
+        max(provider_items_observed - first_functional_green_item, 0)
+        if first_functional_green_item is not None and provider_items_observed
+        else None
     )
-    solution_latency_source = _trace_source_for_solution_latency(trace_source, trace_fidelity)
-    solution_latency_note = _solution_latency_note(trace_source, trace_fidelity, solution_latency_observable)
+    items_after_first_bench_ready_green = (
+        max(provider_items_observed - first_bench_ready_green_item, 0)
+        if first_bench_ready_green_item is not None and provider_items_observed
+        else None
+    )
+    functional_to_bench_ready_items = (
+        max(first_bench_ready_green_item - first_functional_green_item, 0)
+        if first_functional_green_item is not None and first_bench_ready_green_item is not None
+        else None
+    )
+
+    item_solution_latency_observable = bool(checkpoint_rows) and provider_items_observed > 0
+    solution_latency_observable = item_solution_latency_observable or (
+        trace_fidelity != TRACE_FIDELITY_RUN_LEVEL_ONLY
+        and (first_functional_green_turn is not None or first_bench_ready_green_turn is not None)
+    )
+    if item_solution_latency_observable:
+        solution_latency_source = "codex_workspace_snapshots"
+        solution_latency_note = "observed_from_provider_item_checkpoints"
+    else:
+        solution_latency_source = _trace_source_for_solution_latency(trace_source, trace_fidelity)
+        solution_latency_note = _solution_latency_note(trace_source, trace_fidelity, solution_latency_observable)
 
     skill_summary = _summarize_skill_evidence(repo_root, run_id=run_id, phase=phase, arm_slug=arm_slug)
     checkpoint_eval_errors = _flatten_checkpoint_errors(rows)
@@ -1016,6 +1049,14 @@ def _summarize_rows(
         "first_functional_green_wall_seconds": first_functional_green_wall_seconds,
         "first_bench_ready_green_turn": first_bench_ready_green_turn,
         "first_bench_ready_green_wall_seconds": first_bench_ready_green_wall_seconds,
+        "first_green_item": first_functional_green_item,
+        "first_functional_green_item": first_functional_green_item,
+        "first_bench_ready_green_item": first_bench_ready_green_item,
+        "items_after_first_green": items_after_first_functional_green,
+        "items_after_first_functional_green": items_after_first_functional_green,
+        "items_after_first_bench_ready_green": items_after_first_bench_ready_green,
+        "functional_to_bench_ready_items": functional_to_bench_ready_items,
+        "item_solution_latency_observable": item_solution_latency_observable,
         "turns_after_first_green": turns_after_first_functional_green,
         "turns_after_first_functional_green": turns_after_first_functional_green,
         "turns_after_first_bench_ready_green": turns_after_first_bench_ready_green,
